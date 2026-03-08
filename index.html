@@ -1347,15 +1347,42 @@ function App(){
     try{ localStorage.setItem("nexus_tracked", JSON.stringify(trackedCoins)); }catch{}
   },[trackedCoins]);
 
-  // Extra coins to track outside top 200 — add CoinGecko IDs here
-  const EXTRA_COIN_IDS = ['non-playable-coin','clearpool','verge','velo','zigchain'];
-
   const fetchMarket=useCallback(async()=>{
     try {
       setLoadingMore(true);
+
+      // Primary: fetch all coins + history from backend (no CoinGecko rate limits!)
+      if(BACKEND_URL){
+        try{
+          const headers={'Content-Type':'application/json'};
+          if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+          const r=await fetch(`${BACKEND_URL}/api/coins`,{headers});
+          if(r.ok){
+            const data=await r.json();
+            const coins=data.coins||[];
+            if(coins.length){
+              const mapped=coins.filter(c=>!BLACKLIST.has(c.id)).map((c,i)=>({
+                id:c.id,symbol:c.symbol?.toUpperCase(),name:c.name,rank:c.rank||i+1,
+                price:c.price,change:c.change||0,
+                color:`hsl(${(i*37)%360},70%,55%)`,sparkline:c.sparkline||[],
+              }));
+              setCoins(mapped);
+              const h={};mapped.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
+              setHistories(h);
+              setLoading(false);
+              setLastUpdate(new Date());
+              setLoadingMore(false);
+              console.log(`✓ Loaded ${mapped.length} coins from backend (DB history)`);
+              return; // skip CoinGecko fallback
+            }
+          }
+        }catch(e){console.warn('Backend coins fetch failed, falling back to CoinGecko:', e.message);}
+      }
+
+      // Fallback: fetch from CoinGecko directly (used when backend unavailable)
       const sleep=ms=>new Promise(r=>setTimeout(r,ms));
       const pages=[];
-      for(let page=1;page<=4;page++){
+      for(let page=1;page<=2;page++){
         try{
           const r=await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=${page}&sparkline=true&price_change_percentage=24h`);
           if(r.ok){
@@ -1373,44 +1400,13 @@ function App(){
             }
           }
         }catch{}
-        if(page<4) await sleep(600);
-      }
-      // Fetch extra coins from backend (avoids CoinGecko rate limits)
-      if(BACKEND_URL){
-        try{
-          const headers={'Content-Type':'application/json'};
-          if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
-          const r=await fetch(`${BACKEND_URL}/api/extracoins`,{headers});
-          if(r.ok){
-            const data=await r.json();
-            const extras=data.coins||[];
-            const extraMapped=extras.filter(c=>!BLACKLIST.has(c.id)).map((c,i)=>({
-              id:c.id,symbol:c.symbol?.toUpperCase(),name:c.name,rank:c.rank||999,
-              price:c.price,change:c.change||0,
-              color:`hsl(${(i*73+180)%360},70%,55%)`,sparkline:c.sparkline||[],
-              extra:true,
-            }));
-            if(extraMapped.length){
-              setCoins(prev=>{
-                const existingIds=new Set(prev.map(c=>c.id));
-                const newExtras=extraMapped.filter(c=>!existingIds.has(c.id));
-                return newExtras.length?[...prev,...newExtras]:prev;
-              });
-              setHistories(prev=>{
-                const h={...prev};
-                extraMapped.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
-                return h;
-              });
-              console.log(`✓ Extra coins loaded from backend: ${extraMapped.map(c=>c.symbol).join(', ')}`);
-            }
-          }
-        }catch(e){console.warn('Extra coins backend fetch failed:',e.message);}
+        if(page<2) await sleep(2000);
       }
       setLastUpdate(new Date());setLoadingMore(false);
     } catch{setLoading(false);setLoadingMore(false);}
   },[]);
 
-  useEffect(()=>{fetchMarket();const t=setInterval(fetchMarket,60000);return()=>clearInterval(t);},[fetchMarket]);
+  useEffect(()=>{fetchMarket();const t=setInterval(fetchMarket,90000);return()=>clearInterval(t);},[fetchMarket]);
 
   // Auto-refresh tracked coins + trigger logs from backend every 3 minutes
   useEffect(()=>{
