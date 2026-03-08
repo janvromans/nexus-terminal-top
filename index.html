@@ -959,6 +959,20 @@ function DetailView({coin,history,price,change,onBack,newsData,newsFetching,fetc
 // ── Watchlist Tab ─────────────────────────────────────────────────────────────
 // ── Accuracy Tracker ──────────────────────────────────────────────────────────
 // Pins specific coins, logs every BUY→SELL cycle, measures accuracy over time.
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={error:null};}
+  static getDerivedStateFromError(e){return{error:e.message};}
+  render(){
+    if(this.state.error) return (
+      <div style={{padding:40,textAlign:"center",color:"#ff3d71"}}>
+        <div style={{fontSize:14,marginBottom:8}}>⚠ Render error</div>
+        <div style={{fontSize:11,color:"#3a4a6a",fontFamily:"monospace"}}>{this.state.error}</div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,coins,signals,sellAlerts}){
   const fmt=p=>{
     if(!p)return"—";
@@ -1819,7 +1833,7 @@ function App(){
       </div>
 
       {mainTab==="tracker"
-        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} coins={coins} signals={signals} sellAlerts={sellAlerts}/>
+        ?<ErrorBoundary><AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} coins={coins} signals={signals} sellAlerts={sellAlerts}/></ErrorBoundary>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
         :<>
