@@ -973,7 +973,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,coins,signals,sellAlerts}){
+function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,coins,signals,sellAlerts,btcTrend}){
   const fmt=p=>{
     if(!p)return"—";
     if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
@@ -1833,7 +1833,7 @@ function App(){
       </div>
 
       {mainTab==="tracker"
-        ?<ErrorBoundary><AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} coins={coins} signals={signals} sellAlerts={sellAlerts}/></ErrorBoundary>
+        ?<ErrorBoundary><AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend}/></ErrorBoundary>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
         :<>
