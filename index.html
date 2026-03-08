@@ -990,6 +990,13 @@ function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,coins,signals,
     </div>
   );
 
+  // Still loading coins from backend — show spinner
+  if(coins.length===0) return (
+    <div style={{textAlign:"center",padding:"80px 24px",color:"#2a3a5a"}}>
+      <div style={{fontSize:13,color:"#3a4a6a"}}>⏳ Loading coin data...</div>
+    </div>
+  );
+
   // ── Build summary stats for all tracked coins ────────────────────────────
   const summaryRows = trackedCoins.map(coinId=>{
     const coin=coins.find(c=>c.id===coinId);
