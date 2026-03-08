@@ -1459,7 +1459,7 @@ function App(){
       // Refresh BTC trend from status
       fetch(`${BACKEND_URL}/api/status`,{headers})
         .then(r=>r.json())
-        .then(data=>{ if(data.btcTrend) setBtcTrend(data.btcTrend); })
+        .then(data=>{ if(data.btcTrend && data.btcTrend!=='UNKNOWN') setBtcTrend(data.btcTrend); })
         .catch(()=>{});
     };
     const t=setInterval(refreshFromBackend, 3*60*1000); // every 3 minutes
@@ -1536,6 +1536,12 @@ function App(){
     if(!BACKEND_URL) return;
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+
+    // Load BTC trend on startup
+    fetch(`${BACKEND_URL}/api/status`,{headers})
+      .then(r=>r.json())
+      .then(data=>{ if(data.btcTrend && data.btcTrend!=='UNKNOWN') setBtcTrend(data.btcTrend); })
+      .catch(()=>{});
 
     // Load tracked coins list from backend
     fetch(`${BACKEND_URL}/api/tracked`,{headers})
