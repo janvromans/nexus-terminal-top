@@ -959,7 +959,7 @@ function DetailView({coin,history,price,change,onBack,newsData,newsFetching,fetc
 // ── Watchlist Tab ─────────────────────────────────────────────────────────────
 // ── Accuracy Tracker ──────────────────────────────────────────────────────────
 // Pins specific coins, logs every BUY→SELL cycle, measures accuracy over time.
-function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceData,coins,signals,sellAlerts}){
+function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceData,coins,signals,sellAlerts,btcTrend,mktSentiment,buyThresh}){
   const fmt=p=>{
     if(!p)return"—";
     if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
@@ -1021,7 +1021,14 @@ function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceDat
         <div style={{marginBottom:24}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <div style={{fontSize:9,letterSpacing:"0.2em",color:"#4a5a7a"}}>COMPARISON — RANKED BY WIN RATE</div>
-            <div style={{fontSize:9,color:BACKEND_URL?"#00e5a0":"#2a3a5a"}}>{BACKEND_URL?"🟢 Backend connected · triggers logged 24/7":"📅 7-day history replayed · deploy backend for 24/7 logging"}</div>
+            <div style={{fontSize:9,color:BACKEND_URL?"#00e5a0":"#2a3a5a"}}>
+              {BACKEND_URL?(
+                "🟢 Backend · BTC "+(btcTrend==="BULL"?"🟢 BULL":btcTrend==="BEAR"?"🔴 BEAR":"⚪ "+(btcTrend||"..."))+
+                (mktSentiment?" · Market "+(mktSentiment.tier==="SEVERE"?"🔴 "+mktSentiment.bearishPct+"% SEVERE":mktSentiment.tier==="WARNING"?"🟡 "+mktSentiment.bearishPct+"% WARNING":"🟢 "+mktSentiment.bearishPct+"% NORMAL"):"")+
+                " · BUY bar α≥"+(buyThresh||72)+
+                " · triggers logged 24/7"
+              ):"📅 7-day history replayed · deploy backend for 24/7 logging"}
+            </div>
           </div>
           <div style={{background:"#0a0f1a",borderRadius:10,border:"1px solid #1c2535",overflow:"hidden"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -1341,6 +1348,8 @@ function App(){
   });
   const [triggerLog,setTriggerLog]   = useState({});  // {coinId: [{type,price,alpha,time,reason}]}
   const [performanceData,setPerformanceData] = useState({});  // {coinId: {cycles,wins,losses,wr,avgPnl,totalPnl}} from /api/performance
+  const [btcTrend,setBtcTrend]       = useState('...');
+  const [mktSentiment,setMktSentiment] = useState(null);
 
   // Persist watchlist to localStorage on every change
   useEffect(()=>{
@@ -1433,6 +1442,13 @@ function App(){
               return merged.length!==tc.length?merged:tc;
             });
           }
+        }).catch(()=>{});
+      // Refresh BTC trend + market sentiment
+      fetch(`${BACKEND_URL}/api/status`,{headers})
+        .then(r=>r.json())
+        .then(data=>{
+          if(data.btcTrend && data.btcTrend!=='UNKNOWN') setBtcTrend(data.btcTrend);
+          if(data.marketSentiment) setMktSentiment(data.marketSentiment);
         }).catch(()=>{});
       // Refresh trigger logs
       fetch(`${BACKEND_URL}/api/alltriggers`,{headers})
@@ -1527,6 +1543,14 @@ function App(){
     if(!BACKEND_URL) return;
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+
+    // Load BTC trend + market sentiment on startup
+    fetch(`${BACKEND_URL}/api/status`,{headers})
+      .then(r=>r.json())
+      .then(data=>{
+        if(data.btcTrend && data.btcTrend!=='UNKNOWN') setBtcTrend(data.btcTrend);
+        if(data.marketSentiment) setMktSentiment(data.marketSentiment);
+      }).catch(()=>{});
 
     // Load tracked coins list from backend
     fetch(`${BACKEND_URL}/api/tracked`,{headers})
@@ -1836,7 +1860,7 @@ function App(){
       </div>
 
       {mainTab==="tracker"
-        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts}/>
+        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh}/>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
         :<>
