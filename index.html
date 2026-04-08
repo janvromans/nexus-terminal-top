@@ -32,6 +32,14 @@
     th:hover{color:#0e7afe!important}
     input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:#1c2535;outline:none}
     input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#0e7afe;cursor:pointer}
+    @media(max-width:768px){
+      .tile-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))!important}
+      .desktop-hide{display:none!important}
+      table{font-size:10px!important}
+    }
+    @media(max-width:480px){
+      .tile-grid{grid-template-columns:repeat(2,1fr)!important}
+    }
   </style>
 </head>
 <body>
@@ -1315,6 +1323,332 @@ function WatchlistTab({watchlist,coins,onClose,onRemove,onOpen,onClear,sellAlert
     </div>
   );
 }
+// ── Macro Strip ───────────────────────────────────────────────────────────────
+function MacroStrip(){
+  const [btcDom,setBtcDom]=useState(null);
+  const [fg,setFg]=useState(null);
+  const [sp,setSp]=useState(null);
+  useEffect(()=>{
+    fetch('https://api.coingecko.com/api/v3/global').then(r=>r.json())
+      .then(d=>setBtcDom(d.data?.market_cap_percentage?.btc)).catch(()=>{});
+    fetch('https://api.alternative.me/fng/?limit=1').then(r=>r.json())
+      .then(d=>setFg(d.data?.[0])).catch(()=>{});
+    fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d')
+      .then(r=>r.json()).then(d=>{
+        const closes=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
+        const last=closes.filter(Boolean).slice(-1)[0];
+        const prev=closes.filter(Boolean).slice(-2,-1)[0];
+        if(last&&prev) setSp({value:last,change:((last-prev)/prev)*100});
+      }).catch(()=>{});
+  },[]);
+  const fgVal=fg?parseInt(fg.value):null;
+  const fgColor=fgVal===null?'#4a5a7a':fgVal>=75?'#00e5a0':fgVal>=55?'#ffd166':fgVal>=45?'#8896b3':fgVal>=25?'#ff8c42':'#ff3d71';
+  const items=[
+    {label:'BTC DOM',value:btcDom?`${btcDom.toFixed(1)}%`:'—',color:'#f7931a',sub:''},
+    {label:'FEAR/GREED',value:fgVal!==null?`${fgVal}`:'—',color:fgColor,sub:fg?.value_classification||''},
+    {label:'S&P 500',value:sp?sp.value.toFixed(0):'—',color:sp?(sp.change>=0?'#00e5a0':'#ff3d71'):'#4a5a7a',sub:sp?`${sp.change>=0?'+':''}${sp.change.toFixed(2)}%`:''},
+  ];
+  return (
+    <div style={{display:'flex',background:'#050a12',borderBottom:'1px solid #0a0f1a',padding:'4px 24px',flexShrink:0,overflowX:'auto',gap:0}}>
+      <div style={{fontSize:7,color:'#2a3a5a',letterSpacing:'0.2em',display:'flex',alignItems:'center',paddingRight:16,borderRight:'1px solid #0d1525',marginRight:0,flexShrink:0}}>MACRO</div>
+      {items.map((item,i)=>(
+        <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'3px 16px',borderRight:i<items.length-1?'1px solid #0d1525':'none',flexShrink:0}}>
+          <div>
+            <div style={{fontSize:7,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:1}}>{item.label}</div>
+            <div style={{display:'flex',alignItems:'baseline',gap:5}}>
+              <span style={{fontSize:12,fontWeight:700,color:item.color}}>{item.value}</span>
+              {item.sub&&<span style={{fontSize:8,color:item.color,opacity:0.75}}>{item.sub}</span>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Coin Tile (grid view) ─────────────────────────────────────────────────────
+function CoinTile({coin,sig,isWatching,onWatch,onSelect,hasSellAlert}){
+  const alpha=sig?.alpha||50,overall=sig?.overall||'NEUTRAL',earlyTrend=sig?.earlyTrend||false;
+  const ts=alpha>=75?{border:'1px solid #00c47d55',bg:'linear-gradient(135deg,#001a0e,#0a0f1a)'}
+    :alpha>=65?{border:'1px solid #00e5a033',bg:'linear-gradient(135deg,#001208,#0a0f1a)'}
+    :alpha<=28?{border:'1px solid #ff3d7155',bg:'linear-gradient(135deg,#1a0007,#0a0f1a)'}
+    :alpha<=40?{border:'1px solid #ff3d7133',bg:'linear-gradient(135deg,#120005,#0a0f1a)'}
+    :{border:'1px solid #1c2535',bg:'#0a0f1a'};
+  const ac=alpha>=75?'#00e5a0':alpha>=65?'#00c47d':alpha<=28?'#ff3d71':alpha<=40?'#ff6b8a':'#8896b3';
+  const barC=overall==='BUY'?'#00e5a0':overall==='SELL'?'#ff3d71':'#4a5a7a';
+  const fmtP=p=>{if(!p)return'—';if(p<0.01)return`$${p.toFixed(6)}`;if(p<1)return`$${p.toFixed(4)}`;if(p<1000)return`$${p.toFixed(2)}`;return`$${(p/1000).toFixed(1)}k`;};
+  return (
+    <div onClick={()=>onSelect(coin.id)} className="cr"
+      style={{border:ts.border,background:ts.bg,borderRadius:10,padding:'12px 12px 10px',cursor:'pointer',transition:'all .15s',position:'relative',overflow:'hidden',display:'flex',flexDirection:'column',gap:0}}>
+      {hasSellAlert&&<div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:'#ff3d71'}} className="ld"/>}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:5}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:13,color:'#e2e8f0'}}>{coin.symbol}</div>
+          <div style={{fontSize:8,color:'#3a4a6a',marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:80}}>{coin.name}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div style={{fontSize:8,color:'#2a3a5a'}}>#{coin.rank}</div>
+          <div style={{fontSize:7,padding:'1px 5px',borderRadius:2,marginTop:2,background:overall==='BUY'?'rgba(0,229,160,0.15)':overall==='SELL'?'rgba(255,61,113,0.15)':'rgba(136,150,179,0.1)',color:SC[overall],border:`1px solid ${SC[overall]}33`}}>{overall}</div>
+        </div>
+      </div>
+      <div style={{marginBottom:6}}>
+        <div style={{fontSize:11,fontWeight:600,color:'#e2e8f0'}}>{fmtP(coin.price)}</div>
+        <div style={{fontSize:9,color:coin.change>=0?'#00e5a0':'#ff3d71',fontWeight:600}}>{coin.change!==null&&coin.change!==undefined?`${coin.change>=0?'+':''}${coin.change.toFixed(2)}%`:'—'}</div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:3}}>
+          <span style={{fontSize:7,color:'#3a4a6a'}}>α</span>
+          <span style={{fontSize:18,fontWeight:700,color:ac,lineHeight:1}}>{alpha}</span>
+        </div>
+        {earlyTrend&&<span style={{fontSize:7,padding:'1px 5px',borderRadius:2,background:'rgba(255,209,102,0.15)',color:'#ffd166',border:'1px solid #ffd16633'}}>⚡ EARLY</span>}
+      </div>
+      <div style={{height:5,borderRadius:3,background:'#111d2e',overflow:'hidden',marginBottom:7}}>
+        <div style={{height:'100%',width:`${alpha}%`,background:alpha>=65?`linear-gradient(90deg,${barC}66,${barC})`:alpha<=40?`linear-gradient(90deg,${barC}66,${barC})`:'linear-gradient(90deg,#2a3a5a,#4a5a7a)',borderRadius:3,transition:'width .3s'}}/>
+      </div>
+      <button onClick={e=>{e.stopPropagation();onWatch(coin);}}
+        style={{width:'100%',background:isWatching?'rgba(0,229,160,0.1)':'none',border:`1px solid ${isWatching?'#00e5a044':'#1c2535'}`,borderRadius:4,padding:'3px 0',color:isWatching?SC.BUY:'#3a4a6a',fontSize:7,fontFamily:'inherit',cursor:'pointer',fontWeight:600}}>
+        {isWatching?'★ WATCHING':'+ WATCH'}
+      </button>
+    </div>
+  );
+}
+
+// ── Tile Grid ─────────────────────────────────────────────────────────────────
+function TileGrid({coins,signals,watchlist,addToWatchlist,onSelect,sellAlerts}){
+  return (
+    <div style={{padding:'16px 24px'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8}}>
+        {coins.map(coin=>(
+          <CoinTile key={coin.id} coin={coin} sig={signals[coin.id]}
+            isWatching={!!watchlist.find(w=>w.id===coin.id&&!w.closed)}
+            onWatch={addToWatchlist} onSelect={onSelect} hasSellAlert={!!sellAlerts[coin.id]}/>
+        ))}
+        {coins.length===0&&<div style={{gridColumn:'1/-1',textAlign:'center',padding:40,color:'#2a3a5a',fontSize:12}}>No coins match your filter</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Open Positions Panel ──────────────────────────────────────────────────────
+function OpenPositionsPanel({watchlist,coins}){
+  const open=watchlist.filter(w=>!w.closed);
+  if(open.length===0) return null;
+  const fmt=p=>{if(!p)return'—';if(p<0.01)return`$${p.toFixed(6)}`;if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
+  const held=t=>{const s=Math.floor((Date.now()-new Date(t))/1000);if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`;return`${Math.floor(s/86400)}d`;};
+  return (
+    <div style={{padding:'10px 24px',background:'#060b14',borderBottom:'1px solid #0d1525'}}>
+      <div style={{fontSize:8,letterSpacing:'0.2em',color:'#4a5a7a',marginBottom:8}}>▶ OPEN POSITIONS ({open.length})</div>
+      <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:2}}>
+        {open.map(w=>{
+          const live=coins.find(c=>c.id===w.id);
+          const cur=live?.price||w.entryPrice;
+          const pnl=cur&&w.entryPrice?((cur-w.entryPrice)/w.entryPrice)*100:null;
+          const slPct=-5; // 5% stop loss estimate
+          return (
+            <div key={w.id+w.entryTime} style={{background:pnl===null?'rgba(136,150,179,0.05)':pnl>=0?'rgba(0,229,160,0.06)':'rgba(255,61,113,0.06)',border:`1px solid ${pnl===null?'#1c2535':pnl>=0?'#00e5a033':'#ff3d7133'}`,borderRadius:8,padding:'9px 12px',minWidth:175,flexShrink:0}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <div style={{width:5,height:5,borderRadius:'50%',background:w.color}}/>
+                  <span style={{fontWeight:700,fontSize:12,color:'#e2e8f0'}}>{w.symbol}</span>
+                </div>
+                <span style={{fontSize:14,fontWeight:700,color:pnl===null?'#4a5a7a':pnl>=0?'#00e5a0':'#ff3d71'}}>{pnl!==null?`${pnl>=0?'+':''}${pnl.toFixed(2)}%`:'—'}</span>
+              </div>
+              <div style={{fontSize:8,color:'#4a5a7a',display:'grid',gridTemplateColumns:'1fr 1fr',rowGap:2,columnGap:6}}>
+                <span>Entry: <span style={{color:'#8896b3'}}>{fmt(w.entryPrice)}</span></span>
+                <span>Now: <span style={{color:'#e2e8f0'}}>{fmt(cur)}</span></span>
+                <span>Held: <span style={{color:'#8896b3'}}>{held(w.entryTime)}</span></span>
+                <span>SL dist: <span style={{color:'#ff6b8a'}}>{slPct}%</span></span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Early Warnings Panel ──────────────────────────────────────────────────────
+function EarlyWarningsPanel(){
+  const [warnings,setWarnings]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [expanded,setExpanded]=useState(true);
+  useEffect(()=>{
+    if(!BACKEND_URL){setLoading(false);return;}
+    const headers={'Content-Type':'application/json'};
+    if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+    const load=()=>{
+      fetch(`${BACKEND_URL}/api/early-warnings`,{headers})
+        .then(r=>r.json())
+        .then(d=>{setWarnings(Array.isArray(d)?d:(d.warnings||[]));setLoading(false);})
+        .catch(()=>setLoading(false));
+    };
+    load();
+    const t=setInterval(load,5*60*1000);
+    return()=>clearInterval(t);
+  },[]);
+  const timeAgo=t=>{if(!t)return'—';const s=Math.floor((Date.now()-new Date(t))/1000);if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h`;return`${Math.floor(s/86400)}d`;};
+  if(!BACKEND_URL) return null;
+  return (
+    <div style={{background:'#060b14',borderBottom:'1px solid #0d1525'}}>
+      <div onClick={()=>setExpanded(e=>!e)} style={{padding:'7px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:8,letterSpacing:'0.2em',color:'#ffd166'}}>⚡ EARLY WARNINGS</span>
+          {warnings.length>0&&<span style={{fontSize:7,padding:'1px 6px',borderRadius:3,background:'rgba(255,209,102,0.15)',color:'#ffd166',border:'1px solid #ffd16633'}}>{warnings.length}</span>}
+          {loading&&<div style={{width:7,height:7,border:'1px solid #ffd16644',borderTop:'1px solid #ffd166',borderRadius:'50%'}} className="spin"/>}
+        </div>
+        <span style={{fontSize:9,color:'#3a4a6a'}}>{expanded?'▲':'▼'}</span>
+      </div>
+      {expanded&&(
+        <div style={{padding:'0 24px 10px'}}>
+          {!loading&&warnings.length===0&&<div style={{fontSize:10,color:'#2a3a5a',padding:'4px 0'}}>No recent early warnings — backend will push alerts here</div>}
+          {warnings.length>0&&(
+            <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:2}}>
+              {warnings.slice(0,12).map((w,i)=>(
+                <div key={i} style={{background:'rgba(255,209,102,0.05)',border:'1px solid #ffd16633',borderRadius:8,padding:'8px 12px',minWidth:150,flexShrink:0}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:3}}>
+                    <span style={{fontWeight:700,fontSize:12,color:'#ffd166'}}>{w.symbol||w.coin}</span>
+                    <span style={{fontSize:10,fontWeight:600,color:parseFloat(w.pctMove||0)>=0?'#00e5a0':'#ff3d71'}}>
+                      {w.pctMove!==undefined?`${parseFloat(w.pctMove)>=0?'+':''}${parseFloat(w.pctMove).toFixed(1)}%`:''}
+                    </span>
+                  </div>
+                  <div style={{fontSize:8,color:'#8896b3',marginBottom:2}}>{w.pattern||w.type||'Signal'}</div>
+                  <div style={{fontSize:8,color:'#3a4a6a'}}>{timeAgo(w.firedAt||w.time)} ago</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Mini Line Chart (for Paper Trading) ──────────────────────────────────────
+function MiniLineChart({data,w=400,h=90}){
+  if(!data||data.length<2) return <div style={{width:w,height:h,background:'#0a0f1a',borderRadius:6}}/>;
+  const valid=data.filter(v=>v!=null&&!isNaN(v));
+  if(valid.length<2) return <div style={{width:w,height:h,background:'#0a0f1a',borderRadius:6}}/>;
+  const mn=Math.min(...valid),mx=Math.max(...valid),range=mx-mn||1;
+  const pts=valid.map((v,i)=>`${(i/(valid.length-1))*(w-4)+2},${h-4-((v-mn)/range)*(h-12)}`).join(' ');
+  const isUp=valid[valid.length-1]>=valid[0];
+  const col=isUp?'#00e5a0':'#ff3d71';
+  return (
+    <svg width={w} height={h} style={{display:'block'}}>
+      <defs><linearGradient id="mlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={col} stopOpacity="0.15"/><stop offset="100%" stopColor={col} stopOpacity="0"/></linearGradient></defs>
+      <polygon points={`2,${h-4} ${pts} ${w-2},${h-4}`} fill="url(#mlg)"/>
+      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ── Paper Trading Tab ─────────────────────────────────────────────────────────
+function PaperTradingTab(){
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(null);
+  useEffect(()=>{
+    if(!BACKEND_URL){setLoading(false);return;}
+    const headers={'Content-Type':'application/json'};
+    if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+    fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
+      .then(r=>r.json())
+      .then(d=>{setData(d);setLoading(false);})
+      .catch(e=>{setError(e.message);setLoading(false);});
+  },[]);
+  const fmtE=v=>v!=null?`€${parseFloat(v).toFixed(2)}`:'—';
+  const fmtPct=v=>v!=null?`${parseFloat(v)>=0?'+':''}${parseFloat(v).toFixed(2)}%`:'—';
+  if(!BACKEND_URL) return (
+    <div style={{textAlign:'center',padding:'80px 24px',color:'#2a3a5a'}}>
+      <div style={{fontSize:32,marginBottom:16}}>📊</div>
+      <div style={{fontSize:13,color:'#3a4a6a',marginBottom:8}}>Paper Trading requires the NEXUS backend</div>
+      <div style={{fontSize:11,color:'#2a3a5a'}}>Deploy the backend to Railway to enable €500 paper trading simulation</div>
+    </div>
+  );
+  if(loading) return (
+    <div style={{textAlign:'center',padding:'80px 0'}}>
+      <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:12}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:'#0e7afe',animation:'bounce 1.2s infinite',animationDelay:`${i*0.2}s`}}/>)}</div>
+      <div style={{fontSize:11,color:'#3a4a6a',letterSpacing:'0.2em'}}>LOADING PAPER TRADES...</div>
+    </div>
+  );
+  if(error||!data) return (
+    <div style={{textAlign:'center',padding:'60px 24px',color:'#2a3a5a'}}>
+      <div style={{fontSize:13,color:'#3a4a6a',marginBottom:4}}>No paper trading data available</div>
+      <div style={{fontSize:10}}>{error||'No data returned from /api/paper-trades'}</div>
+    </div>
+  );
+  const startVal=500;
+  const trades=data.trades||data.closedTrades||[];
+  const history=data.portfolioHistory||[];
+  const totalVal=data.portfolioValue||data.totalValue||startVal;
+  const totalRet=((totalVal-startVal)/startVal)*100;
+  const todayPnl=data.todayPnl!=null?data.todayPnl:null;
+  const wins=trades.filter(t=>parseFloat(t.pnl||t.pnlPct||0)>0).length;
+  const wr=trades.length>0?Math.round(wins/trades.length*100):null;
+  const chartData=history.length>1?history.map(p=>typeof p==='object'?p.value:p):[startVal,totalVal];
+  return (
+    <div style={{padding:'20px 24px'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))',gap:10,marginBottom:20}}>
+        {[
+          ['PORTFOLIO VALUE',fmtE(totalVal),totalRet>=0?'#00e5a0':'#ff3d71'],
+          ['TOTAL RETURN',fmtPct(totalRet),totalRet>=0?'#00e5a0':'#ff3d71'],
+          ['TODAY P&L',todayPnl!=null?fmtPct(todayPnl):'—',todayPnl>0?'#00e5a0':todayPnl<0?'#ff3d71':'#4a5a7a'],
+          ['WIN RATE',wr!=null?`${wr}%`:'—',wr>=50?'#00e5a0':'#ff3d71'],
+          ['CLOSED TRADES',`${trades.length}`,'#8896b3'],
+        ].map(([lbl,val,col])=>(
+          <div key={lbl} style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:8,padding:'12px 14px'}}>
+            <div style={{fontSize:8,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:5}}>{lbl}</div>
+            <div style={{fontSize:18,fontWeight:700,color:col}}>{val}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:10,padding:'16px 18px',marginBottom:20}}>
+        <div style={{fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a',marginBottom:10}}>PORTFOLIO VALUE CHART — Starting €{startVal}</div>
+        <div style={{overflowX:'auto'}}>
+          <MiniLineChart data={chartData} w={Math.max(360,chartData.length*10)} h={100}/>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:5,fontSize:8,color:'#2a3a5a'}}>
+          <span>€{Math.min(...chartData).toFixed(0)}</span><span>€{Math.max(...chartData).toFixed(0)}</span>
+        </div>
+      </div>
+      {trades.length>0?(
+        <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:10,overflow:'hidden'}}>
+          <div style={{padding:'10px 14px',borderBottom:'1px solid #1c2535',fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a'}}>CLOSED TRADES ({trades.length})</div>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead>
+                <tr style={{background:'#060b14',borderBottom:'1px solid #111d2e'}}>
+                  {['COIN','ENTRY','EXIT','P&L','DATE'].map(h=><th key={h} style={{padding:'7px 12px',textAlign:'left',fontSize:8,letterSpacing:'0.12em',color:'#3a4a6a',fontWeight:600}}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {trades.slice(0,50).map((t,i)=>{
+                  const pnl=parseFloat(t.pnl||t.pnlPct||0),isWin=pnl>0;
+                  const ds=t.closedAt||t.exitTime?new Date(t.closedAt||t.exitTime).toLocaleDateString():'—';
+                  return (
+                    <tr key={i} style={{borderBottom:'1px solid #0d1525',background:i%2===0?'#0a0f1a':'#070c15'}}>
+                      <td style={{padding:'8px 12px',fontWeight:700,color:'#e2e8f0'}}>{t.symbol||t.coin}</td>
+                      <td style={{padding:'8px 12px',color:'#8896b3'}}>${parseFloat(t.entryPrice||0).toFixed(4)}</td>
+                      <td style={{padding:'8px 12px',color:'#8896b3'}}>${parseFloat(t.exitPrice||0).toFixed(4)}</td>
+                      <td style={{padding:'8px 12px',fontWeight:700,color:isWin?'#00e5a0':'#ff3d71'}}>{isWin?'+':''}{pnl.toFixed(2)}%</td>
+                      <td style={{padding:'8px 12px',color:'#4a5a7a',fontSize:9}}>{ds}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ):(
+        <div style={{textAlign:'center',padding:'40px 0',color:'#2a3a5a'}}>
+          <div style={{fontSize:13,color:'#3a4a6a',marginBottom:4}}>No closed trades yet</div>
+          <div style={{fontSize:10}}>Paper trades will appear once positions are closed via /api/paper-trades</div>
+        </div>
+      )}
+      <div style={{fontSize:10,color:'#1c2535',padding:'12px 0'}}>⚠ Paper trading simulation only · Not real money · Not financial advice</div>
+    </div>
+  );
+}
+
 function App(){
   const [coins,setCoins]             = useState([]);
   const [loading,setLoading]         = useState(true);
@@ -1332,6 +1666,7 @@ function App(){
   const [showSettings,setShowSettings] = useState(false);
   const [showBacktest,setShowBacktest] = useState(false);
   const [mainTab,setMainTab]         = useState("scanner");
+  const [viewMode,setViewMode]       = useState("table"); // "table" | "grid"
   const [watchlist,setWatchlist]     = useState(()=>{
     try{
       const saved=localStorage.getItem("nexus_watchlist");
@@ -1852,10 +2187,13 @@ function App(){
         </div>
       </div>
 
+      {/* MACRO STRIP */}
+      <MacroStrip/>
+
       {/* MAIN TABS */}
-      <div style={{display:"flex",borderBottom:"1px solid #111d2e",background:"#080e1a",position:"sticky",top:52,zIndex:99,padding:"0 24px"}}>
-        {[["scanner","📊 SCANNER"],["watchlist",`📡 SIGNAL TRACKER${watchlistCount>0?" ("+watchlistCount+")":""}`],["tracker",`📈 ACCURACY TRACKER${trackedCoins.length>0?" ("+trackedCoins.length+")":""}`]].map(([key,label])=>(
-          <button key={key} onClick={()=>setMainTab(key)} style={{background:"none",border:"none",borderBottom:`2px solid ${mainTab===key?"#0e7afe":"transparent"}`,padding:"10px 18px",fontSize:10,letterSpacing:"0.12em",fontFamily:"inherit",color:mainTab===key?"#0e7afe":key==="watchlist"&&watchlistCount>0?SC.BUY:"#3a4a6a",cursor:"pointer",transition:"all .15s",fontWeight:mainTab===key?700:400}}>{label}</button>
+      <div style={{display:"flex",borderBottom:"1px solid #111d2e",background:"#080e1a",position:"sticky",top:52,zIndex:99,padding:"0 24px",overflowX:"auto"}}>
+        {[["scanner","📊 SCANNER"],["watchlist",`📡 SIGNAL TRACKER${watchlistCount>0?" ("+watchlistCount+")":""}`],["tracker",`📈 ACCURACY TRACKER${trackedCoins.length>0?" ("+trackedCoins.length+")":""}`],["paper","💰 PAPER TRADING"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setMainTab(key)} style={{background:"none",border:"none",borderBottom:`2px solid ${mainTab===key?"#0e7afe":"transparent"}`,padding:"10px 18px",fontSize:10,letterSpacing:"0.12em",fontFamily:"inherit",color:mainTab===key?"#0e7afe":key==="watchlist"&&watchlistCount>0?SC.BUY:"#3a4a6a",cursor:"pointer",transition:"all .15s",fontWeight:mainTab===key?700:400,whiteSpace:"nowrap"}}>{label}</button>
         ))}
       </div>
 
@@ -1863,19 +2201,35 @@ function App(){
         ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh}/>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
+        :mainTab==="paper"
+        ?<PaperTradingTab/>
         :<>
-      <div style={{padding:"12px 24px",borderBottom:"1px solid #0d1525",display:"flex",alignItems:"center",gap:12,background:"#080e1a"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search coin name or symbol..."
-          style={{background:"#0d1525",border:"1px solid #1c2535",borderRadius:6,padding:"7px 14px",color:"#e2e8f0",fontSize:11,fontFamily:"inherit",outline:"none",width:260}}/>
+      {/* Open Positions Panel */}
+      <OpenPositionsPanel watchlist={watchlist} coins={coins}/>
+      {/* Early Warnings Panel */}
+      <EarlyWarningsPanel/>
+      {/* Search / filter / view toggle bar */}
+      <div style={{padding:"10px 24px",borderBottom:"1px solid #0d1525",display:"flex",alignItems:"center",gap:10,background:"#080e1a",flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search coin..."
+          style={{background:"#0d1525",border:"1px solid #1c2535",borderRadius:6,padding:"6px 12px",color:"#e2e8f0",fontSize:11,fontFamily:"inherit",outline:"none",width:200}}/>
         <div style={{display:"flex",gap:6}}>
           {["ALL","BUY","NEUTRAL","SELL"].map(f=>(
             <button key={f} onClick={()=>setFilterSig(f)}
-              style={{background:filterSig===f?(f==="BUY"?SC.BUY+"22":f==="SELL"?SC.SELL+"22":f==="NEUTRAL"?SC.NEUTRAL+"22":"#1c2535"):"none",border:`1px solid ${filterSig===f?(f==="BUY"?SC.BUY:f==="SELL"?SC.SELL:f==="NEUTRAL"?SC.NEUTRAL:"#4a5a7a"):"#1c2535"}`,borderRadius:5,padding:"5px 12px",color:filterSig===f?(f==="BUY"?SC.BUY:f==="SELL"?SC.SELL:f==="NEUTRAL"?SC.NEUTRAL:"#e2e8f0"):"#4a5a7a",fontSize:9,fontFamily:"inherit",cursor:"pointer",letterSpacing:"0.1em",fontWeight:filterSig===f?700:400}}>
+              style={{background:filterSig===f?(f==="BUY"?SC.BUY+"22":f==="SELL"?SC.SELL+"22":f==="NEUTRAL"?SC.NEUTRAL+"22":"#1c2535"):"none",border:`1px solid ${filterSig===f?(f==="BUY"?SC.BUY:f==="SELL"?SC.SELL:f==="NEUTRAL"?SC.NEUTRAL:"#4a5a7a"):"#1c2535"}`,borderRadius:5,padding:"5px 10px",color:filterSig===f?(f==="BUY"?SC.BUY:f==="SELL"?SC.SELL:f==="NEUTRAL"?SC.NEUTRAL:"#e2e8f0"):"#4a5a7a",fontSize:9,fontFamily:"inherit",cursor:"pointer",letterSpacing:"0.1em",fontWeight:filterSig===f?700:400}}>
               {f}
             </button>
           ))}
         </div>
-        <span style={{fontSize:10,color:"#2a3a5a",marginLeft:"auto"}}>{filtered.length} coins · click row for analysis · + WATCH to track</span>
+        {/* View mode toggle */}
+        <div style={{display:"flex",gap:4,marginLeft:8}}>
+          {[["table","☰ TABLE"],["grid","⊞ GRID"]].map(([mode,label])=>(
+            <button key={mode} onClick={()=>setViewMode(mode)}
+              style={{background:viewMode===mode?"rgba(14,122,254,0.15)":"none",border:`1px solid ${viewMode===mode?"#0e7afe44":"#1c2535"}`,borderRadius:5,padding:"5px 10px",color:viewMode===mode?"#0e7afe":"#4a5a7a",fontSize:9,fontFamily:"inherit",cursor:"pointer",letterSpacing:"0.08em",fontWeight:viewMode===mode?700:400}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span style={{fontSize:10,color:"#2a3a5a",marginLeft:"auto"}}>{filtered.length} coins</span>
       </div>
 
       {loading?(
@@ -1883,6 +2237,8 @@ function App(){
           <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:16}}>{[0,1,2,3,4].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#0e7afe",animation:"bounce 1.2s infinite",animationDelay:`${i*0.15}s`}}/>)}</div>
           <div style={{fontSize:12,color:"#3a4a6a",letterSpacing:"0.2em"}}>LOADING TOP 200 COINS...</div>
         </div>
+      ):viewMode==="grid"?(
+        <TileGrid coins={filtered} signals={signals} watchlist={watchlist} addToWatchlist={addToWatchlist} onSelect={setSelectedCoin} sellAlerts={sellAlerts}/>
       ):(
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
