@@ -1450,7 +1450,7 @@ function OpenPositionsPanel({watchlist,coins}){
   },[]);
 
   // Merge backend open trades + frontend watchlist open entries (dedup by coin)
-  const fmtP=p=>{if(p==null||p===''||isNaN(p))return'—';const n=parseFloat(p);if(n<0.01)return`$${n.toFixed(6)}`;if(n<1)return`$${n.toFixed(4)}`;if(n<100)return`$${n.toFixed(2)}`;return`$${n.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
+  const fmtP=p=>{if(p==null||p===''||isNaN(p))return'—';const n=parseFloat(p);if(n<0.01)return`€${n.toFixed(6)}`;if(n<1)return`€${n.toFixed(4)}`;if(n<100)return`€${n.toFixed(2)}`;return`€${n.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
   const fmtE=v=>{if(v==null||isNaN(v))return'—';const n=parseFloat(v);return`€${Math.abs(n).toFixed(2)}`;};
   const held=t=>{if(!t)return'—';const s=Math.floor((Date.now()-new Date(t))/1000);if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`;return`${Math.floor(s/86400)}d`;};
 
@@ -1673,7 +1673,7 @@ function PaperTradingTab(){
                   const pnlPct=parseFloat(t.pnl_pct||0),pnlEur=parseFloat(t.pnl_eur||0),isWin=pnlPct>0;
                   const ep=parseFloat(t.entry_price||0),xp=parseFloat(t.exit_price||0);
                   const ds=t.exit_time?new Date(t.exit_time).toLocaleDateString():'—';
-                  const fmtPrice=p=>p<0.01?`$${p.toFixed(6)}`:p<1?`$${p.toFixed(4)}`:`$${p.toFixed(3)}`;
+                  const fmtPrice=p=>p<0.01?`€${p.toFixed(6)}`:p<1?`€${p.toFixed(4)}`:`€${p.toFixed(3)}`;
                   return (
                     <tr key={t.id||i} style={{borderBottom:'1px solid #0d1525',background:i%2===0?'#0a0f1a':'#070c15'}}>
                       <td style={{padding:'8px 12px',fontWeight:700,color:'#e2e8f0'}}>{t.symbol}</td>
