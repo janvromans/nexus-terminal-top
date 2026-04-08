@@ -1431,32 +1431,74 @@ function TileGrid({coins,signals,watchlist,addToWatchlist,onSelect,sellAlerts}){
 
 // ── Open Positions Panel ──────────────────────────────────────────────────────
 function OpenPositionsPanel({watchlist,coins}){
-  const open=watchlist.filter(w=>!w.closed);
-  if(open.length===0) return null;
-  const fmt=p=>{if(!p)return'—';if(p<0.01)return`$${p.toFixed(6)}`;if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
-  const held=t=>{const s=Math.floor((Date.now()-new Date(t))/1000);if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`;return`${Math.floor(s/86400)}d`;};
+  const [apiOpen,setApiOpen]=useState([]);
+  useEffect(()=>{
+    if(!BACKEND_URL) return;
+    const headers={'Content-Type':'application/json'};
+    if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+    const load=()=>{
+      fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
+        .then(r=>r.json())
+        .then(d=>{
+          const all=d.trades||[];
+          setApiOpen(all.filter(t=>t.status==='open'));
+        }).catch(()=>{});
+    };
+    load();
+    const t=setInterval(load,60000);
+    return()=>clearInterval(t);
+  },[]);
+
+  // Merge backend open trades + frontend watchlist open entries (dedup by coin)
+  const fmtP=p=>{if(p==null||p===''||isNaN(p))return'—';const n=parseFloat(p);if(n<0.01)return`$${n.toFixed(6)}`;if(n<1)return`$${n.toFixed(4)}`;if(n<100)return`$${n.toFixed(2)}`;return`$${n.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
+  const fmtE=v=>{if(v==null||isNaN(v))return'—';const n=parseFloat(v);return`€${Math.abs(n).toFixed(2)}`;};
+  const held=t=>{if(!t)return'—';const s=Math.floor((Date.now()-new Date(t))/1000);if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`;return`${Math.floor(s/86400)}d`;};
+
+  // Backend open trades take priority
+  const backendIds=new Set(apiOpen.map(t=>t.coin_id));
+  const wlOpen=watchlist.filter(w=>!w.closed&&!backendIds.has(w.id));
+  const allOpen=[
+    ...apiOpen.map(t=>({
+      key:t.coin_id+t.entry_time,symbol:t.symbol,coinId:t.coin_id,
+      entryPrice:parseFloat(t.entry_price),entryTime:t.entry_time,
+      sizeEur:parseFloat(t.position_size_eur||50),fromBackend:true,color:'#0e7afe',
+    })),
+    ...wlOpen.map(w=>({
+      key:w.id+w.entryTime,symbol:w.symbol,coinId:w.id,
+      entryPrice:w.entryPrice,entryTime:w.entryTime,
+      sizeEur:50,fromBackend:false,color:w.color,
+    })),
+  ];
+
+  if(allOpen.length===0) return null;
+
   return (
     <div style={{padding:'10px 24px',background:'#060b14',borderBottom:'1px solid #0d1525'}}>
-      <div style={{fontSize:8,letterSpacing:'0.2em',color:'#4a5a7a',marginBottom:8}}>▶ OPEN POSITIONS ({open.length})</div>
+      <div style={{fontSize:8,letterSpacing:'0.2em',color:'#4a5a7a',marginBottom:8}}>▶ OPEN POSITIONS ({allOpen.length})</div>
       <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:2}}>
-        {open.map(w=>{
-          const live=coins.find(c=>c.id===w.id);
-          const cur=live?.price||w.entryPrice;
-          const pnl=cur&&w.entryPrice?((cur-w.entryPrice)/w.entryPrice)*100:null;
-          const slPct=-5; // 5% stop loss estimate
+        {allOpen.map(pos=>{
+          const live=coins.find(c=>c.id===pos.coinId);
+          const cur=live?.price;
+          const pnlPct=(cur&&pos.entryPrice&&pos.entryPrice>0)?((cur-pos.entryPrice)/pos.entryPrice)*100:null;
+          const pnlEur=pnlPct!==null?(pos.sizeEur*pnlPct/100):null;
+          const slPct=-5;
           return (
-            <div key={w.id+w.entryTime} style={{background:pnl===null?'rgba(136,150,179,0.05)':pnl>=0?'rgba(0,229,160,0.06)':'rgba(255,61,113,0.06)',border:`1px solid ${pnl===null?'#1c2535':pnl>=0?'#00e5a033':'#ff3d7133'}`,borderRadius:8,padding:'9px 12px',minWidth:175,flexShrink:0}}>
+            <div key={pos.key} style={{background:pnlPct===null?'rgba(136,150,179,0.05)':pnlPct>=0?'rgba(0,229,160,0.06)':'rgba(255,61,113,0.06)',border:`1px solid ${pnlPct===null?'#1c2535':pnlPct>=0?'#00e5a033':'#ff3d7133'}`,borderRadius:8,padding:'9px 12px',minWidth:190,flexShrink:0}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
-                  <div style={{width:5,height:5,borderRadius:'50%',background:w.color}}/>
-                  <span style={{fontWeight:700,fontSize:12,color:'#e2e8f0'}}>{w.symbol}</span>
+                  <div style={{width:5,height:5,borderRadius:'50%',background:pos.color}}/>
+                  <span style={{fontWeight:700,fontSize:12,color:'#e2e8f0'}}>{pos.symbol}</span>
+                  {pos.fromBackend&&<span style={{fontSize:7,padding:'1px 4px',borderRadius:2,background:'rgba(14,122,254,0.12)',color:'#0e7afe',border:'1px solid #0e7afe33'}}>PAPER</span>}
                 </div>
-                <span style={{fontSize:14,fontWeight:700,color:pnl===null?'#4a5a7a':pnl>=0?'#00e5a0':'#ff3d71'}}>{pnl!==null?`${pnl>=0?'+':''}${pnl.toFixed(2)}%`:'—'}</span>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:13,fontWeight:700,color:pnlPct===null?'#4a5a7a':pnlPct>=0?'#00e5a0':'#ff3d71'}}>{pnlPct!==null?`${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%`:'—'}</div>
+                  {pnlEur!==null&&<div style={{fontSize:9,color:pnlEur>=0?'#00c47d':'#ff6b8a'}}>{pnlEur>=0?'+':''}{fmtE(pnlEur)}</div>}
+                </div>
               </div>
               <div style={{fontSize:8,color:'#4a5a7a',display:'grid',gridTemplateColumns:'1fr 1fr',rowGap:2,columnGap:6}}>
-                <span>Entry: <span style={{color:'#8896b3'}}>{fmt(w.entryPrice)}</span></span>
-                <span>Now: <span style={{color:'#e2e8f0'}}>{fmt(cur)}</span></span>
-                <span>Held: <span style={{color:'#8896b3'}}>{held(w.entryTime)}</span></span>
+                <span>Entry: <span style={{color:'#8896b3'}}>{fmtP(pos.entryPrice)}</span></span>
+                <span>Now: <span style={{color: cur?'#e2e8f0':'#3a4a6a'}}>{cur?fmtP(cur):'loading...'}</span></span>
+                <span>Held: <span style={{color:'#8896b3'}}>{held(pos.entryTime)}</span></span>
                 <span>SL dist: <span style={{color:'#ff6b8a'}}>{slPct}%</span></span>
               </div>
             </div>
@@ -1577,23 +1619,29 @@ function PaperTradingTab(){
     </div>
   );
   const startVal=500;
-  const trades=data.trades||data.closedTrades||[];
-  const history=data.portfolioHistory||[];
-  const totalVal=data.portfolioValue||data.totalValue||startVal;
+  const trades=data.trades||[];
+  const summary=data.summary||{};
+  const totalVal=summary.portfolio_value||startVal;
   const totalRet=((totalVal-startVal)/startVal)*100;
-  const todayPnl=data.todayPnl!=null?data.todayPnl:null;
-  const wins=trades.filter(t=>parseFloat(t.pnl||t.pnlPct||0)>0).length;
-  const wr=trades.length>0?Math.round(wins/trades.length*100):null;
-  const chartData=history.length>1?history.map(p=>typeof p==='object'?p.value:p):[startVal,totalVal];
+  const wr=summary.win_rate!=null?summary.win_rate:null;
+  const totalPnlEur=summary.total_pnl_eur||0;
+  // Compute today P&L from trades closed today
+  const todayStr=new Date().toDateString();
+  const todayTrades=trades.filter(t=>t.exit_time&&new Date(t.exit_time).toDateString()===todayStr);
+  const todayPnlEur=todayTrades.reduce((a,t)=>a+parseFloat(t.pnl_eur||0),0);
+  const todayPnlPct=todayTrades.length>0?(todayPnlEur/startVal*100):null;
+  // Build portfolio chart from cumulative pnl_eur sorted by exit_time
+  const sortedClosed=trades.filter(t=>t.exit_time).sort((a,b)=>new Date(a.exit_time)-new Date(b.exit_time));
+  const chartData=[startVal,...sortedClosed.reduce((acc,t)=>{acc.push(acc[acc.length-1]+parseFloat(t.pnl_eur||0));return acc;},[startVal])].slice(-200);
   return (
     <div style={{padding:'20px 24px'}}>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))',gap:10,marginBottom:20}}>
         {[
           ['PORTFOLIO VALUE',fmtE(totalVal),totalRet>=0?'#00e5a0':'#ff3d71'],
-          ['TOTAL RETURN',fmtPct(totalRet),totalRet>=0?'#00e5a0':'#ff3d71'],
-          ['TODAY P&L',todayPnl!=null?fmtPct(todayPnl):'—',todayPnl>0?'#00e5a0':todayPnl<0?'#ff3d71':'#4a5a7a'],
+          ['TOTAL RETURN',`${totalRet>=0?'+':''}${totalRet.toFixed(2)}%`,totalRet>=0?'#00e5a0':'#ff3d71'],
+          ['TODAY P&L',todayPnlPct!=null?`${todayPnlEur>=0?'+':''}€${Math.abs(todayPnlEur).toFixed(2)}`:'—',todayPnlEur>0?'#00e5a0':todayPnlEur<0?'#ff3d71':'#4a5a7a'],
           ['WIN RATE',wr!=null?`${wr}%`:'—',wr>=50?'#00e5a0':'#ff3d71'],
-          ['CLOSED TRADES',`${trades.length}`,'#8896b3'],
+          ['CLOSED TRADES',`${summary.total_trades||trades.length}`,'#8896b3'],
         ].map(([lbl,val,col])=>(
           <div key={lbl} style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:8,padding:'12px 14px'}}>
             <div style={{fontSize:8,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:5}}>{lbl}</div>
@@ -1617,19 +1665,23 @@ function PaperTradingTab(){
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
               <thead>
                 <tr style={{background:'#060b14',borderBottom:'1px solid #111d2e'}}>
-                  {['COIN','ENTRY','EXIT','P&L','DATE'].map(h=><th key={h} style={{padding:'7px 12px',textAlign:'left',fontSize:8,letterSpacing:'0.12em',color:'#3a4a6a',fontWeight:600}}>{h}</th>)}
+                  {['COIN','ENTRY','EXIT','P&L %','P&L €','EXIT REASON','DATE'].map(h=><th key={h} style={{padding:'7px 12px',textAlign:'left',fontSize:8,letterSpacing:'0.12em',color:'#3a4a6a',fontWeight:600}}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {trades.slice(0,50).map((t,i)=>{
-                  const pnl=parseFloat(t.pnl||t.pnlPct||0),isWin=pnl>0;
-                  const ds=t.closedAt||t.exitTime?new Date(t.closedAt||t.exitTime).toLocaleDateString():'—';
+                  const pnlPct=parseFloat(t.pnl_pct||0),pnlEur=parseFloat(t.pnl_eur||0),isWin=pnlPct>0;
+                  const ep=parseFloat(t.entry_price||0),xp=parseFloat(t.exit_price||0);
+                  const ds=t.exit_time?new Date(t.exit_time).toLocaleDateString():'—';
+                  const fmtPrice=p=>p<0.01?`$${p.toFixed(6)}`:p<1?`$${p.toFixed(4)}`:`$${p.toFixed(3)}`;
                   return (
-                    <tr key={i} style={{borderBottom:'1px solid #0d1525',background:i%2===0?'#0a0f1a':'#070c15'}}>
-                      <td style={{padding:'8px 12px',fontWeight:700,color:'#e2e8f0'}}>{t.symbol||t.coin}</td>
-                      <td style={{padding:'8px 12px',color:'#8896b3'}}>${parseFloat(t.entryPrice||0).toFixed(4)}</td>
-                      <td style={{padding:'8px 12px',color:'#8896b3'}}>${parseFloat(t.exitPrice||0).toFixed(4)}</td>
-                      <td style={{padding:'8px 12px',fontWeight:700,color:isWin?'#00e5a0':'#ff3d71'}}>{isWin?'+':''}{pnl.toFixed(2)}%</td>
+                    <tr key={t.id||i} style={{borderBottom:'1px solid #0d1525',background:i%2===0?'#0a0f1a':'#070c15'}}>
+                      <td style={{padding:'8px 12px',fontWeight:700,color:'#e2e8f0'}}>{t.symbol}</td>
+                      <td style={{padding:'8px 12px',color:'#8896b3'}}>{ep>0?fmtPrice(ep):'—'}</td>
+                      <td style={{padding:'8px 12px',color:'#8896b3'}}>{xp>0?fmtPrice(xp):'—'}</td>
+                      <td style={{padding:'8px 12px',fontWeight:700,color:isWin?'#00e5a0':'#ff3d71'}}>{isWin?'+':''}{pnlPct.toFixed(2)}%</td>
+                      <td style={{padding:'8px 12px',fontWeight:600,color:isWin?'#00c47d':'#ff6b8a'}}>{isWin?'+':''}{pnlEur>=0?'€':'−€'}{Math.abs(pnlEur).toFixed(2)}</td>
+                      <td style={{padding:'8px 12px',fontSize:8,color:'#4a5a7a'}}>{t.exit_reason||'—'}</td>
                       <td style={{padding:'8px 12px',color:'#4a5a7a',fontSize:9}}>{ds}</td>
                     </tr>
                   );
