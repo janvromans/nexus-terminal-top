@@ -1603,7 +1603,7 @@ function PaperTradingTab(){
     <div style={{textAlign:'center',padding:'80px 24px',color:'#2a3a5a'}}>
       <div style={{fontSize:32,marginBottom:16}}>📊</div>
       <div style={{fontSize:13,color:'#3a4a6a',marginBottom:8}}>Paper Trading requires the NEXUS backend</div>
-      <div style={{fontSize:11,color:'#2a3a5a'}}>Deploy the backend to Railway to enable €500 paper trading simulation</div>
+      <div style={{fontSize:11,color:'#2a3a5a'}}>Deploy the backend to Railway to enable €1,000 paper trading simulation</div>
     </div>
   );
   if(loading) return (
@@ -1618,7 +1618,7 @@ function PaperTradingTab(){
       <div style={{fontSize:10}}>{error||'No data returned from /api/paper-trades'}</div>
     </div>
   );
-  const startVal=500;
+  const startVal=1000;
   const trades=data.trades||[];
   const summary=data.summary||{};
   const totalVal=summary.portfolio_value||startVal;
