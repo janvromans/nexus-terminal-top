@@ -1621,8 +1621,8 @@ function PaperTradingTab(){
   const startVal=1000;
   const trades=data.trades||[];
   const summary=data.summary||{};
-  const totalVal=summary.portfolio_value||startVal;
-  const totalRet=((totalVal-startVal)/startVal)*100;
+  const totalVal=summary.portfolio_value!=null?summary.portfolio_value:startVal;
+  const totalRet=summary.total_return_pct!=null?summary.total_return_pct:((totalVal-startVal)/startVal)*100;
   const wr=summary.win_rate!=null?summary.win_rate:null;
   const totalPnlEur=summary.total_pnl_eur||0;
   // Compute today P&L from trades closed today
@@ -1650,7 +1650,7 @@ function PaperTradingTab(){
         ))}
       </div>
       <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:10,padding:'16px 18px',marginBottom:20}}>
-        <div style={{fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a',marginBottom:10}}>PORTFOLIO VALUE CHART — Starting €{startVal}</div>
+        <div style={{fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a',marginBottom:10}}>PORTFOLIO VALUE CHART — Starting €1,000</div>
         <div style={{overflowX:'auto'}}>
           <MiniLineChart data={chartData} w={Math.max(360,chartData.length*10)} h={100}/>
         </div>
