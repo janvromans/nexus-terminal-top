@@ -964,10 +964,33 @@ function DetailView({coin,history,price,change,onBack,newsData,newsFetching,fetc
   );
 }
 
+// ── Tier helpers ──────────────────────────────────────────────────────────────
+function getTier(coinId,tiersData){
+  if(!tiersData||!coinId) return null;
+  if(tiersData.elite?.includes(coinId)) return 'ELITE';
+  if(tiersData.standard?.includes(coinId)) return 'STANDARD';
+  if(tiersData.probation?.includes(coinId)) return 'PROBATION';
+  return null;
+}
+function tierBadge(coinId,tiersData){
+  const t=getTier(coinId,tiersData);
+  if(t==='ELITE') return '🏆';
+  if(t==='STANDARD') return '📊';
+  if(t==='PROBATION') return '🔬';
+  return null;
+}
+function tierPositionSize(coinId,tiersData){
+  const t=getTier(coinId,tiersData);
+  if(t==='ELITE') return 200;
+  if(t==='STANDARD') return 125;
+  if(t==='PROBATION') return 75;
+  return null;
+}
+
 // ── Watchlist Tab ─────────────────────────────────────────────────────────────
 // ── Accuracy Tracker ──────────────────────────────────────────────────────────
 // Pins specific coins, logs every BUY→SELL cycle, measures accuracy over time.
-function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceData,coins,signals,sellAlerts,btcTrend,mktSentiment,buyThresh}){
+function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceData,coins,signals,sellAlerts,btcTrend,mktSentiment,buyThresh,tiersData}){
   const fmt=p=>{
     if(!p)return"—";
     if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
@@ -1059,6 +1082,7 @@ function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceDat
                           <div style={{width:6,height:6,borderRadius:"50%",background:r.coin?.color||"#8896b3",flexShrink:0}}/>
                           <div>
                             <span style={{fontWeight:700,color:"#e2e8f0"}}>{r.coin?.symbol||r.coinId.toUpperCase()}</span>
+                            {tierBadge(r.coinId,tiersData)&&<span style={{fontSize:10,marginLeft:4}}>{tierBadge(r.coinId,tiersData)}</span>}
                             {r.hasSellAlert&&<span style={{fontSize:7,marginLeft:5,color:SC.SELL}}>🔔</span>}
                           </div>
                         </div>
@@ -1138,6 +1162,7 @@ function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceDat
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:8,height:8,borderRadius:"50%",background:coin?.color||"#8896b3"}}/>
                 <span style={{fontWeight:700,color:"#e2e8f0",fontSize:14}}>{coin?.symbol||coinId.toUpperCase()}</span>
+                {tierBadge(coinId,tiersData)&&<span style={{fontSize:13}}>{tierBadge(coinId,tiersData)}</span>}
                 <span style={{fontSize:11,color:"#4a5a7a"}}>{coin?.name||coinId}</span>
                 <span style={{fontSize:9,padding:"2px 7px",borderRadius:3,color:sig.overall==="BUY"?SC.BUY:sig.overall==="SELL"?SC.SELL:"#8896b3",background:sig.overall==="BUY"?"rgba(0,229,160,0.1)":sig.overall==="SELL"?"rgba(255,61,113,0.1)":"rgba(136,150,179,0.08)",border:`1px solid ${sig.overall==="BUY"?SC.BUY+"33":sig.overall==="SELL"?SC.SELL+"33":"#1c2535"}`}}>{sig.overall}</span>
                 {hasSellAlert&&<span style={{fontSize:8,padding:"2px 7px",borderRadius:3,background:"rgba(255,61,113,0.12)",color:SC.SELL,border:"1px solid #ff3d7144",animation:"pulse 1.5s infinite"}}>🔔 SELL ALERT</span>}
@@ -1430,7 +1455,7 @@ function TileGrid({coins,signals,watchlist,addToWatchlist,onSelect,sellAlerts}){
 }
 
 // ── Open Positions Panel ──────────────────────────────────────────────────────
-function OpenPositionsPanel({watchlist,coins}){
+function OpenPositionsPanel({watchlist,coins,tiersData}){
   const [apiOpen,setApiOpen]=useState([]);
   useEffect(()=>{
     if(!BACKEND_URL) return;
@@ -1461,12 +1486,12 @@ function OpenPositionsPanel({watchlist,coins}){
     ...apiOpen.map(t=>({
       key:t.coin_id+t.entry_time,symbol:t.symbol,coinId:t.coin_id,
       entryPrice:parseFloat(t.entry_price),entryTime:t.entry_time,
-      sizeEur:parseFloat(t.position_size_eur||50),fromBackend:true,color:'#0e7afe',
+      sizeEur:tierPositionSize(t.coin_id,tiersData)||parseFloat(t.position_size_eur||50),fromBackend:true,color:'#0e7afe',
     })),
     ...wlOpen.map(w=>({
       key:w.id+w.entryTime,symbol:w.symbol,coinId:w.id,
       entryPrice:w.entryPrice,entryTime:w.entryTime,
-      sizeEur:50,fromBackend:false,color:w.color,
+      sizeEur:tierPositionSize(w.id,tiersData)||50,fromBackend:false,color:w.color,
     })),
   ];
 
@@ -1488,6 +1513,7 @@ function OpenPositionsPanel({watchlist,coins}){
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <div style={{width:5,height:5,borderRadius:'50%',background:pos.color}}/>
                   <span style={{fontWeight:700,fontSize:12,color:'#e2e8f0'}}>{pos.symbol}</span>
+                  {tierBadge(pos.coinId,tiersData)&&<span style={{fontSize:11}}>{tierBadge(pos.coinId,tiersData)}</span>}
                   {pos.fromBackend&&<span style={{fontSize:7,padding:'1px 4px',borderRadius:2,background:'rgba(14,122,254,0.12)',color:'#0e7afe',border:'1px solid #0e7afe33'}}>PAPER</span>}
                 </div>
                 <div style={{textAlign:'right'}}>
@@ -1499,7 +1525,7 @@ function OpenPositionsPanel({watchlist,coins}){
                 <span>Entry: <span style={{color:'#8896b3'}}>{fmtP(pos.entryPrice)}</span></span>
                 <span>Now: <span style={{color: cur?'#e2e8f0':'#3a4a6a'}}>{cur?fmtP(cur):'loading...'}</span></span>
                 <span>Held: <span style={{color:'#8896b3'}}>{held(pos.entryTime)}</span></span>
-                <span>SL dist: <span style={{color:'#ff6b8a'}}>{slPct}%</span></span>
+                <span>Size: <span style={{color:'#8896b3'}}>€{pos.sizeEur}</span></span>
               </div>
             </div>
           );
@@ -1648,6 +1674,33 @@ function PaperTradingTab(){
             <div style={{fontSize:18,fontWeight:700,color:col}}>{val}</div>
           </div>
         ))}
+        {/* Tier breakdown */}
+        {summary.tier_breakdown&&(()=>{
+          const tb=summary.tier_breakdown;
+          const val=`🏆 ${tb.elite??'—'} Elite · 📊 ${tb.standard??'—'} Standard · 🔬 ${tb.probation??'—'} Probation`;
+          return (
+            <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:8,padding:'12px 14px'}}>
+              <div style={{fontSize:8,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:5}}>TIER BREAKDOWN</div>
+              <div style={{fontSize:11,fontWeight:600,color:'#8896b3',lineHeight:1.7}}>{val}</div>
+            </div>
+          );
+        })()}
+        {/* Limit fill rate */}
+        {summary.limit_fill_rate!=null&&(
+          <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:8,padding:'12px 14px'}}>
+            <div style={{fontSize:8,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:5}}>LIMIT FILL RATE</div>
+            <div style={{fontSize:18,fontWeight:700,color:parseFloat(summary.limit_fill_rate)>=70?'#00e5a0':parseFloat(summary.limit_fill_rate)>=40?'#ffd166':'#ff3d71'}}>{parseFloat(summary.limit_fill_rate).toFixed(1)}%</div>
+            <div style={{fontSize:8,color:'#3a4a6a',marginTop:2}}>filled within 3 polls</div>
+          </div>
+        )}
+        {/* Time filter blocked */}
+        {summary.time_blocked_today!=null&&(
+          <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:8,padding:'12px 14px'}}>
+            <div style={{fontSize:8,color:'#3a4a6a',letterSpacing:'0.12em',marginBottom:5}}>TIME FILTER</div>
+            <div style={{fontSize:18,fontWeight:700,color:summary.time_blocked_today>0?'#ffd166':'#4a5a7a'}}>{summary.time_blocked_today}</div>
+            <div style={{fontSize:8,color:'#3a4a6a',marginTop:2}}>trades blocked today (08–14 CET)</div>
+          </div>
+        )}
       </div>
       <div style={{background:'#0a0f1a',border:'1px solid #1c2535',borderRadius:10,padding:'16px 18px',marginBottom:20}}>
         <div style={{fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a',marginBottom:10}}>PORTFOLIO VALUE CHART — Starting €1,000</div>
@@ -1737,6 +1790,23 @@ function App(){
   const [performanceData,setPerformanceData] = useState({});  // {coinId: {cycles,wins,losses,wr,avgPnl,totalPnl}} from /api/performance
   const [btcTrend,setBtcTrend]       = useState('...');
   const [mktSentiment,setMktSentiment] = useState(null);
+  const [tiersData,setTiersData]     = useState({elite:[],standard:[],probation:[]});
+
+  // Fetch tier data every 10 minutes
+  useEffect(()=>{
+    if(!BACKEND_URL) return;
+    const headers={'Content-Type':'application/json'};
+    if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
+    const load=()=>{
+      fetch(`${BACKEND_URL}/api/tiers`,{headers})
+        .then(r=>r.json())
+        .then(d=>setTiersData({elite:d.elite||[],standard:d.standard||[],probation:d.probation||[]}))
+        .catch(()=>{});
+    };
+    load();
+    const t=setInterval(load,10*60*1000);
+    return()=>clearInterval(t);
+  },[]);
 
   // Persist watchlist to localStorage on every change
   useEffect(()=>{
@@ -2250,14 +2320,14 @@ function App(){
       </div>
 
       {mainTab==="tracker"
-        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh}/>
+        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh} tiersData={tiersData}/>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
         :mainTab==="paper"
         ?<PaperTradingTab/>
         :<>
       {/* Open Positions Panel */}
-      <OpenPositionsPanel watchlist={watchlist} coins={coins}/>
+      <OpenPositionsPanel watchlist={watchlist} coins={coins} tiersData={tiersData}/>
       {/* Early Warnings Panel */}
       <EarlyWarningsPanel/>
       {/* Search / filter / view toggle bar */}
