@@ -1614,14 +1614,25 @@ function PaperTradingTab(){
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState(null);
+  const [eliteData,setEliteData]=useState(null);
+  const [eliteLoading,setEliteLoading]=useState(true);
   useEffect(()=>{
-    if(!BACKEND_URL){setLoading(false);return;}
+    if(!BACKEND_URL){setLoading(false);setEliteLoading(false);return;}
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
-    fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
-      .then(r=>r.json())
-      .then(d=>{setData(d);setLoading(false);})
-      .catch(e=>{setError(e.message);setLoading(false);});
+    const load=()=>{
+      fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
+        .then(r=>r.json())
+        .then(d=>{setData(d);setLoading(false);})
+        .catch(e=>{setError(e.message);setLoading(false);});
+      fetch(`${BACKEND_URL}/api/elite-paper-trades`,{headers})
+        .then(r=>r.json())
+        .then(d=>{setEliteData(d);setEliteLoading(false);})
+        .catch(()=>setEliteLoading(false));
+    };
+    load();
+    const t=setInterval(load,3*60*1000);
+    return()=>clearInterval(t);
   },[]);
   const fmtE=v=>v!=null?`€${parseFloat(v).toFixed(2)}`:'—';
   const fmtPct=v=>v!=null?`${parseFloat(v)>=0?'+':''}${parseFloat(v).toFixed(2)}%`:'—';
@@ -1749,6 +1760,94 @@ function PaperTradingTab(){
           <div style={{fontSize:10}}>Paper trades will appear once positions are closed via /api/paper-trades</div>
         </div>
       )}
+      {/* ── ELITE PORTFOLIO ──────────────────────────────────────────────── */}
+      <div style={{marginTop:32,borderTop:'2px solid #2a1f00',paddingTop:24}}>
+        <div style={{fontSize:13,fontWeight:700,color:'#ffd166',letterSpacing:'0.18em',marginBottom:20}}>🏆 ELITE PORTFOLIO</div>
+        {eliteLoading?(
+          <div style={{textAlign:'center',padding:'40px 0'}}>
+            <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:12}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:'#ffd166',animation:'bounce 1.2s infinite',animationDelay:`${i*0.2}s`}}/>)}</div>
+            <div style={{fontSize:11,color:'#3a4a6a',letterSpacing:'0.2em'}}>LOADING ELITE TRADES...</div>
+          </div>
+        ):(()=>{
+          const eTrades=eliteData?.trades||[];
+          const eSummary=eliteData?.summary||{};
+          const eStartVal=1000;
+          const eTotalVal=eSummary.portfolio_value!=null?eSummary.portfolio_value:eStartVal;
+          const eTotalRet=eSummary.total_return_pct!=null?eSummary.total_return_pct:((eTotalVal-eStartVal)/eStartVal)*100;
+          const eWr=eSummary.win_rate!=null?eSummary.win_rate:null;
+          const eTodayStr=new Date().toDateString();
+          const eTodayTrades=eTrades.filter(t=>t.exit_time&&new Date(t.exit_time).toDateString()===eTodayStr);
+          const eTodayPnlEur=eTodayTrades.reduce((a,t)=>a+parseFloat(t.pnl_eur||0),0);
+          const eTodayPnlPct=eTodayTrades.length>0?(eTodayPnlEur/eStartVal*100):null;
+          const eSortedClosed=eTrades.filter(t=>t.exit_time).sort((a,b)=>new Date(a.exit_time)-new Date(b.exit_time));
+          const eChartData=[eStartVal,...eSortedClosed.reduce((acc,t)=>{acc.push(acc[acc.length-1]+parseFloat(t.pnl_eur||0));return acc;},[eStartVal])].slice(-200);
+          return (
+            <>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(155px,1fr))',gap:10,marginBottom:20}}>
+                {[
+                  ['PORTFOLIO VALUE',fmtE(eTotalVal),eTotalRet>=0?'#00e5a0':'#ff3d71'],
+                  ['TOTAL RETURN',`${eTotalRet>=0?'+':''}${eTotalRet.toFixed(2)}%`,eTotalRet>=0?'#00e5a0':'#ff3d71'],
+                  ['TODAY P&L',eTodayPnlPct!=null?`${eTodayPnlEur>=0?'+':''}€${Math.abs(eTodayPnlEur).toFixed(2)}`:'—',eTodayPnlEur>0?'#00e5a0':eTodayPnlEur<0?'#ff3d71':'#4a5a7a'],
+                  ['WIN RATE',eWr!=null?`${eWr}%`:'—',eWr>=50?'#00e5a0':'#ff3d71'],
+                  ['CLOSED TRADES',`${eSummary.total_trades||eTrades.length}`,'#8896b3'],
+                ].map(([lbl,val,col])=>(
+                  <div key={lbl} style={{background:'#0a0f1a',border:'1px solid #2a1f00',borderRadius:8,padding:'12px 14px'}}>
+                    <div style={{fontSize:8,color:'#5a4a00',letterSpacing:'0.12em',marginBottom:5}}>{lbl}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:col}}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{background:'#0a0f1a',border:'1px solid #2a1f00',borderRadius:10,padding:'16px 18px',marginBottom:20}}>
+                <div style={{fontSize:8,letterSpacing:'0.15em',color:'#5a4a00',marginBottom:10}}>ELITE PORTFOLIO VALUE CHART — Starting €1,000</div>
+                <div style={{overflowX:'auto'}}>
+                  <MiniLineChart data={eChartData} w={Math.max(360,eChartData.length*10)} h={100}/>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',marginTop:5,fontSize:8,color:'#2a3a5a'}}>
+                  <span>€{Math.min(...eChartData).toFixed(0)}</span><span>€{Math.max(...eChartData).toFixed(0)}</span>
+                </div>
+              </div>
+              {eTrades.length>0?(
+                <div style={{background:'#0a0f1a',border:'1px solid #2a1f00',borderRadius:10,overflow:'hidden'}}>
+                  <div style={{padding:'10px 14px',borderBottom:'1px solid #2a1f00',fontSize:8,letterSpacing:'0.15em',color:'#5a4a00'}}>CLOSED TRADES ({eTrades.length})</div>
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                      <thead>
+                        <tr style={{background:'#060b14',borderBottom:'1px solid #111d2e'}}>
+                          {['COIN','ENTRY','EXIT','P&L %','P&L €','EXIT REASON','DATE'].map(h=><th key={h} style={{padding:'7px 12px',textAlign:'left',fontSize:8,letterSpacing:'0.12em',color:'#5a4a00',fontWeight:600}}>{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eTrades.slice(0,50).map((t,i)=>{
+                          const pnlPct=parseFloat(t.pnl_pct||0),pnlEur=parseFloat(t.pnl_eur||0),isWin=pnlPct>0;
+                          const ep=parseFloat(t.entry_price||0),xp=parseFloat(t.exit_price||0);
+                          const ds=t.exit_time?new Date(t.exit_time).toLocaleDateString():'—';
+                          const fmtPrice=p=>p<0.01?`€${p.toFixed(6)}`:p<1?`€${p.toFixed(4)}`:`€${p.toFixed(3)}`;
+                          return (
+                            <tr key={t.id||i} style={{borderBottom:'1px solid #0d1525',background:i%2===0?'#0a0f1a':'#070c15'}}>
+                              <td style={{padding:'8px 12px',fontWeight:700,color:'#e2e8f0'}}>{t.symbol}</td>
+                              <td style={{padding:'8px 12px',color:'#8896b3'}}>{ep>0?fmtPrice(ep):'—'}</td>
+                              <td style={{padding:'8px 12px',color:'#8896b3'}}>{xp>0?fmtPrice(xp):'—'}</td>
+                              <td style={{padding:'8px 12px',fontWeight:700,color:isWin?'#00e5a0':'#ff3d71'}}>{isWin?'+':''}{pnlPct.toFixed(2)}%</td>
+                              <td style={{padding:'8px 12px',fontWeight:600,color:isWin?'#00c47d':'#ff6b8a'}}>{isWin?'+':''}{pnlEur>=0?'€':'−€'}{Math.abs(pnlEur).toFixed(2)}</td>
+                              <td style={{padding:'8px 12px',fontSize:8,color:'#4a5a7a'}}>{t.exit_reason||'—'}</td>
+                              <td style={{padding:'8px 12px',color:'#4a5a7a',fontSize:9}}>{ds}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ):(
+                <div style={{textAlign:'center',padding:'40px 0',color:'#2a3a5a'}}>
+                  <div style={{fontSize:13,color:'#3a4a6a',marginBottom:4}}>No elite trades yet</div>
+                  <div style={{fontSize:10}}>Elite paper trades will appear once positions are closed via /api/elite-paper-trades</div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
       <div style={{fontSize:10,color:'#1c2535',padding:'12px 0'}}>⚠ Paper trading simulation only · Not real money · Not financial advice</div>
     </div>
   );
