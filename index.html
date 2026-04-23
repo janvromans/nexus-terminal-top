@@ -2343,6 +2343,9 @@ function App(){
   const sellCount=coins.filter(c=>signals[c.id]?.overall==="SELL").length;
   const neutCount=coins.filter(c=>signals[c.id]?.overall==="NEUTRAL").length;
   const settingsChanged=JSON.stringify(cfg)!==JSON.stringify(DEFAULT_SETTINGS);
+  const allPricesZero=!loading&&coins.length>0&&coins.every(c=>c.change===0);
+  const tooFewCoins=!loading&&coins.length>0&&coins.length<100;
+  const showHealthWarning=tooFewCoins||allPricesZero;
   const selectedCoinObj=selectedCoin?coins.find(c=>c.id===selectedCoin):null;
 
   if(selectedCoinObj){
@@ -2395,6 +2398,13 @@ function App(){
           <button onClick={()=>setShowSettings(s=>!s)} style={{background:showSettings||settingsChanged?"rgba(14,122,254,0.15)":"none",border:`1px solid ${showSettings||settingsChanged?"#0e7afe44":"#1c2535"}`,borderRadius:5,padding:"5px 12px",color:showSettings||settingsChanged?"#0e7afe":"#4a5a7a",fontSize:9,fontFamily:"inherit",cursor:"pointer",letterSpacing:"0.1em"}}>⚙ SETTINGS</button>
         </div>
       </div>
+
+      {/* HEALTH WARNING BANNER */}
+      {showHealthWarning&&<div style={{background:"rgba(255,165,0,0.08)",borderBottom:"1px solid rgba(255,165,0,0.25)",padding:"7px 24px",display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#ffa500"}}>
+        <span style={{fontWeight:700}}>⚠ DATA WARNING</span>
+        <span style={{color:"#3a4a6a"}}>·</span>
+        <span>{tooFewCoins?`Only ${coins.length} coins loaded (expected ≥100) — backend may be initializing.`:""}{tooFewCoins&&allPricesZero?" · ":""}{allPricesZero?"All price changes showing 0.00% — price feed may be unavailable.":""}</span>
+      </div>}
 
       {/* MACRO STRIP */}
       <MacroStrip/>
