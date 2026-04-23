@@ -68,6 +68,9 @@ const BLACKLIST = new Set([
 const BACKEND_URL    = 'https://nexus-backend-production-1985.up.railway.app';
 const BACKEND_API_KEY = 'nexus-2024';
 
+// ── EUR/USD conversion rate (fetched on each market refresh) ─────────────────
+let EUR_RATE = 0.92;
+
 const DEFAULT_SETTINGS = {
   // Legacy thresholds (still used by individual indicators)
   rsiBuyHigh:25, rsiBuyMed:35, rsiSellHigh:75, rsiSellMed:65,
@@ -752,9 +755,10 @@ function DetailView({coin,history,price,change,onBack,newsData,newsFetching,fetc
   const compositeScore=hasNews?Math.round(score*tw+nd.score*nw):score;
   const compositeSignal=compositeScore>=cfg.buyThresh?"BUY":compositeScore<=cfg.sellThresh?"SELL":"NEUTRAL";
   const fmt=p=>{
-    if(!p)return"---";if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
-    if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;
-    return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;
+    if(!p)return"---";const e=p*EUR_RATE;
+    if(e<0.00001)return`€${e.toFixed(8)}`;if(e<0.01)return`€${e.toFixed(6)}`;
+    if(e<1)return`€${e.toFixed(4)}`;if(e<100)return`€${e.toFixed(2)}`;
+    return`€${e.toLocaleString(undefined,{maximumFractionDigits:2})}`;
   };
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}} className="fade">
@@ -764,7 +768,7 @@ function DetailView({coin,history,price,change,onBack,newsData,newsFetching,fetc
           <div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
               <span style={{fontFamily:"Syne,sans-serif",fontWeight:900,fontSize:20,color:"#fff"}}>{coin.name}</span>
-              <span style={{fontSize:11,color:"#3a4a6a"}}>{coin.symbol}/USD</span>
+              <span style={{fontSize:11,color:"#3a4a6a"}}>{coin.symbol}/EUR</span>
               <span style={{fontSize:8,padding:"2px 7px",borderRadius:3,background:"#0d1525",color:"#3a4a6a",border:"1px solid #1c2535"}}>#{coin.rank}</span>
             </div>
             <div style={{display:"flex",alignItems:"baseline",gap:10}}>
@@ -992,10 +996,10 @@ function tierPositionSize(coinId,tiersData){
 // Pins specific coins, logs every BUY→SELL cycle, measures accuracy over time.
 function AccuracyTracker({trackedCoins,setTrackedCoins,triggerLog,performanceData,coins,signals,sellAlerts,btcTrend,mktSentiment,buyThresh,tiersData}){
   const fmt=p=>{
-    if(!p)return"—";
-    if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
-    if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;
-    return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;
+    if(!p)return"—";const e=p*EUR_RATE;
+    if(e<0.00001)return`€${e.toFixed(8)}`;if(e<0.01)return`€${e.toFixed(6)}`;
+    if(e<1)return`€${e.toFixed(4)}`;if(e<100)return`€${e.toFixed(2)}`;
+    return`€${e.toLocaleString(undefined,{maximumFractionDigits:2})}`;
   };
   const timeStr=t=>{
     if(!t)return"—";
@@ -1251,10 +1255,10 @@ function WatchlistTab({watchlist,coins,onClose,onRemove,onOpen,onClear,sellAlert
   const open=watchlist.filter(w=>!w.closed);
   const closed=watchlist.filter(w=>w.closed);
   const fmt=p=>{
-    if(!p)return"—";
-    if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
-    if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;
-    return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;
+    if(!p)return"—";const e=p*EUR_RATE;
+    if(e<0.00001)return`€${e.toFixed(8)}`;if(e<0.01)return`€${e.toFixed(6)}`;
+    if(e<1)return`€${e.toFixed(4)}`;if(e<100)return`€${e.toFixed(2)}`;
+    return`€${e.toLocaleString(undefined,{maximumFractionDigits:2})}`;
   };
   const timeAgo=t=>{
     const s=Math.floor((Date.now()-new Date(t))/1000);
@@ -1405,7 +1409,7 @@ function CoinTile({coin,sig,isWatching,onWatch,onSelect,hasSellAlert}){
     :{border:'1px solid #1c2535',bg:'#0a0f1a'};
   const ac=alpha>=75?'#00e5a0':alpha>=65?'#00c47d':alpha<=28?'#ff3d71':alpha<=40?'#ff6b8a':'#8896b3';
   const barC=overall==='BUY'?'#00e5a0':overall==='SELL'?'#ff3d71':'#4a5a7a';
-  const fmtP=p=>{if(!p)return'—';if(p<0.01)return`$${p.toFixed(6)}`;if(p<1)return`$${p.toFixed(4)}`;if(p<1000)return`$${p.toFixed(2)}`;return`$${(p/1000).toFixed(1)}k`;};
+  const fmtP=p=>{if(!p)return'—';const e=p*EUR_RATE;if(e<0.01)return`€${e.toFixed(6)}`;if(e<1)return`€${e.toFixed(4)}`;if(e<1000)return`€${e.toFixed(2)}`;return`€${(e/1000).toFixed(1)}k`;};
   return (
     <div onClick={()=>onSelect(coin.id)} className="cr"
       style={{border:ts.border,background:ts.bg,borderRadius:10,padding:'12px 12px 10px',cursor:'pointer',transition:'all .15s',position:'relative',overflow:'hidden',display:'flex',flexDirection:'column',gap:0}}>
@@ -1485,7 +1489,7 @@ function OpenPositionsPanel({watchlist,coins,tiersData}){
 
   // Backend open trades take priority
   const backendIds=new Set(apiOpen.map(t=>t.coin_id));
-  const wlOpen=watchlist.filter(w=>!w.closed&&!backendIds.has(w.id));
+  const wlOpen=watchlist.filter(w=>!w.closed&&!backendIds.has(w.id)&&!BLACKLIST.has(w.id));
   const allOpen=[
     ...apiOpen.map(t=>({
       key:t.coin_id+t.entry_time,symbol:t.symbol,coinId:t.coin_id,
@@ -1926,15 +1930,33 @@ function App(){
       setLoadingMore(true);
       const headers={'Content-Type':'application/json'};
       if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
-      const r=await fetch(`${BACKEND_URL}/api/alphas`,{headers,cache:'no-store'});
-      if(r.ok){
-        const data=await r.json();
-        const raw=Array.isArray(data)?data:(data.coins||data.alphas||[]);
-        const mapped=raw.filter(c=>!BLACKLIST.has(c.coinId||c.id)).map((c,i)=>({
-          id:c.coinId||c.id,symbol:(c.symbol||'').toUpperCase(),name:c.name||c.symbol||'',
-          rank:c.rank||i+1,price:c.price||0,change:c.change24h??c.change??0,
+      // Fetch EUR rate, full coin list, and alpha scores in parallel
+      const [coinsRes,alphasRes,eurRes]=await Promise.allSettled([
+        fetch(`${BACKEND_URL}/api/coins`,{headers,cache:'no-store'}),
+        fetch(`${BACKEND_URL}/api/alphas`,{headers,cache:'no-store'}),
+        fetch('https://open.er-api.com/v6/latest/USD'),
+      ]);
+      // Update EUR rate if available
+      if(eurRes.status==='fulfilled'&&eurRes.value.ok){
+        try{const ed=await eurRes.value.json();if(ed?.rates?.EUR)EUR_RATE=ed.rates.EUR;}catch{}
+      }
+      if(coinsRes.status==='fulfilled'&&coinsRes.value.ok){
+        const coinsData=await coinsRes.value.json();
+        const raw=Array.isArray(coinsData)?coinsData:(coinsData.coins||[]);
+        // Build alpha score map from /api/alphas
+        const alphaMap={};
+        if(alphasRes.status==='fulfilled'&&alphasRes.value.ok){
+          try{
+            const ad=await alphasRes.value.json();
+            const al=Array.isArray(ad)?ad:(ad.coins||ad.alphas||[]);
+            al.forEach(a=>{if(a.coinId||a.id)alphaMap[a.coinId||a.id]=a.alpha??a.alphaScore??null;});
+          }catch{}
+        }
+        const mapped=raw.filter(c=>!BLACKLIST.has(c.id)).map((c,i)=>({
+          id:c.id,symbol:(c.symbol||'').toUpperCase(),name:c.name||c.symbol||'',
+          rank:c.rank||i+1,price:c.price||0,change:c.change??0,
           color:`hsl(${(i*37)%360},70%,55%)`,sparkline:c.sparkline||[],
-          alpha:c.alpha??c.alphaScore??null,
+          alpha:alphaMap[c.id]??null,
         }));
         setCoins(mapped);
         const h={};mapped.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
@@ -2289,10 +2311,10 @@ function App(){
   },[]);
 
   const fmt=p=>{
-    if(p===null||p===undefined)return"—";
-    if(p<0.00001)return`$${p.toFixed(8)}`;if(p<0.01)return`$${p.toFixed(6)}`;
-    if(p<1)return`$${p.toFixed(4)}`;if(p<100)return`$${p.toFixed(2)}`;
-    return`$${p.toLocaleString(undefined,{maximumFractionDigits:2})}`;
+    if(p===null||p===undefined)return"—";const e=p*EUR_RATE;
+    if(e<0.00001)return`€${e.toFixed(8)}`;if(e<0.01)return`€${e.toFixed(6)}`;
+    if(e<1)return`€${e.toFixed(4)}`;if(e<100)return`€${e.toFixed(2)}`;
+    return`€${e.toLocaleString(undefined,{maximumFractionDigits:2})}`;
   };
 
   const filtered=useMemo(()=>{
@@ -2512,7 +2534,7 @@ function App(){
         </div>
       )}
       <div style={{padding:"16px 24px",fontSize:10,color:"#1c2535",borderTop:"1px solid #0a0f1a"}}>
-        ⚠ Signals based on 7-day sparkline data · Not financial advice · Prices via CoinGecko · Refreshes every 60s
+        ⚠ Signals based on 7-day sparkline data · Not financial advice · Prices via backend API · Refreshes every 3m
       </div>
       </>}
       {showSettings&&<SettingsPanel cfg={cfg} setCfg={c=>{setCfg(c);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
