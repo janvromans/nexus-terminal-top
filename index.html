@@ -1861,6 +1861,28 @@ function PaperTradingTab(){
   );
 }
 
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={hasError:false};}
+  static getDerivedStateFromError(){return{hasError:true};}
+  componentDidCatch(err,info){console.error("Component error:",err,info);}
+  render(){
+    if(this.state.hasError){
+      return(
+        <div style={{padding:"40px 24px",textAlign:"center",color:"#ff3d71",fontFamily:"'IBM Plex Mono',monospace",fontSize:12}}>
+          <div style={{fontSize:18,marginBottom:8}}>⚠</div>
+          <div style={{fontWeight:700,letterSpacing:"0.1em",marginBottom:6}}>COMPONENT FAILED TO LOAD</div>
+          <div style={{color:"#4a5a7a",marginBottom:16,fontSize:11}}>An error occurred in this section.</div>
+          <button onClick={()=>this.setState({hasError:false})}
+            style={{background:"rgba(255,61,113,0.1)",border:"1px solid #ff3d7144",borderRadius:5,padding:"6px 16px",color:"#ff3d71",fontSize:10,fontFamily:"inherit",cursor:"pointer",letterSpacing:"0.1em"}}>
+            ↺ REFRESH TO RETRY
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App(){
   const [coins,setCoins]             = useState([]);
   const [loading,setLoading]         = useState(true);
@@ -1879,6 +1901,7 @@ function App(){
   const [showBacktest,setShowBacktest] = useState(false);
   const [mainTab,setMainTab]         = useState("scanner");
   const [viewMode,setViewMode]       = useState("table"); // "table" | "grid"
+  const [usingFallback,setUsingFallback] = useState(false);
   const [watchlist,setWatchlist]     = useState(()=>{
     try{
       const saved=localStorage.getItem("nexus_watchlist");
@@ -1940,29 +1963,57 @@ function App(){
       if(eurRes.status==='fulfilled'&&eurRes.value.ok){
         try{const ed=await eurRes.value.json();if(ed?.rates?.EUR)EUR_RATE=ed.rates.EUR;}catch{}
       }
+      // Parse alphas (needed for both primary and fallback paths)
+      const alphaMap={};
+      let alphasRaw=[];
+      if(alphasRes.status==='fulfilled'&&alphasRes.value.ok){
+        try{
+          const ad=await alphasRes.value.json();
+          alphasRaw=Array.isArray(ad)?ad:(ad.coins||ad.alphas||[]);
+          alphasRaw.forEach(a=>{if(a.coinId||a.id)alphaMap[a.coinId||a.id]=a.alpha??a.alphaScore??null;});
+        }catch{}
+      }
+      const buildFallback=(src,i)=>({
+        id:src.coinId||src.id,symbol:(src.symbol||src.coinId||src.id||'').toUpperCase(),
+        name:src.name||src.symbol||src.coinId||src.id||'',
+        rank:src.rank||i+1,price:src.price||0,change:src.change??0,
+        color:`hsl(${(i*37)%360},70%,55%)`,sparkline:src.sparkline||[],
+        alpha:src.alpha??src.alphaScore??null,
+      });
+      let usedFallback=false;
       if(coinsRes.status==='fulfilled'&&coinsRes.value.ok){
         const coinsData=await coinsRes.value.json();
         const raw=Array.isArray(coinsData)?coinsData:(coinsData.coins||[]);
-        // Build alpha score map from /api/alphas
-        const alphaMap={};
-        if(alphasRes.status==='fulfilled'&&alphasRes.value.ok){
-          try{
-            const ad=await alphasRes.value.json();
-            const al=Array.isArray(ad)?ad:(ad.coins||ad.alphas||[]);
-            al.forEach(a=>{if(a.coinId||a.id)alphaMap[a.coinId||a.id]=a.alpha??a.alphaScore??null;});
-          }catch{}
-        }
         const mapped=raw.filter(c=>!BLACKLIST.has(c.id)).map((c,i)=>({
           id:c.id,symbol:(c.symbol||'').toUpperCase(),name:c.name||c.symbol||'',
           rank:c.rank||i+1,price:c.price||0,change:c.change??0,
           color:`hsl(${(i*37)%360},70%,55%)`,sparkline:c.sparkline||[],
           alpha:alphaMap[c.id]??null,
         }));
-        setCoins(mapped);
-        const h={};mapped.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
-        setHistories(h);setLoading(false);
+        if(mapped.length>=100){
+          setCoins(mapped);
+          const h={};mapped.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
+          setHistories(h);
+        } else {
+          // Fewer than 100 coins — fall back to alphas if available
+          usedFallback=true;
+          const src=alphasRaw.length>0?alphasRaw.filter(a=>!BLACKLIST.has(a.coinId||a.id)).map(buildFallback):mapped;
+          setCoins(src.length>0?src:mapped);
+          const h={};src.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
+          setHistories(h);
+        }
+      } else {
+        // /api/coins failed — fall back to alphas
+        usedFallback=true;
+        if(alphasRaw.length>0){
+          const fallback=alphasRaw.filter(a=>!BLACKLIST.has(a.coinId||a.id)).map(buildFallback);
+          setCoins(fallback);
+          const h={};fallback.forEach(c=>{if(c.sparkline?.length>10)h[c.id]=c.sparkline;});
+          setHistories(h);
+        }
       }
-      setLastUpdate(new Date());setLoadingMore(false);
+      setUsingFallback(usedFallback);
+      setLastUpdate(new Date());setLoading(false);setLoadingMore(false);
     }catch{setLoading(false);setLoadingMore(false);}
   },[]);
 
@@ -2399,6 +2450,12 @@ function App(){
         </div>
       </div>
 
+      {/* FALLBACK BANNER */}
+      {usingFallback&&<div style={{background:"rgba(14,122,254,0.08)",borderBottom:"1px solid rgba(14,122,254,0.25)",padding:"7px 24px",display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#0e7afe"}}>
+        <span style={{fontWeight:700}}>ℹ LIMITED DATA</span>
+        <span style={{color:"#3a4a6a"}}>·</span>
+        <span>Using fallback data source — primary coin feed unavailable or incomplete.</span>
+      </div>}
       {/* HEALTH WARNING BANNER */}
       {showHealthWarning&&<div style={{background:"rgba(255,165,0,0.08)",borderBottom:"1px solid rgba(255,165,0,0.25)",padding:"7px 24px",display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#ffa500"}}>
         <span style={{fontWeight:700}}>⚠ DATA WARNING</span>
@@ -2417,12 +2474,12 @@ function App(){
       </div>
 
       {mainTab==="tracker"
-        ?<AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh} tiersData={tiersData}/>
+        ?<ErrorBoundary><AccuracyTracker trackedCoins={trackedCoins} setTrackedCoins={setTrackedCoins} triggerLog={triggerLog} performanceData={performanceData} coins={coins} signals={signals} sellAlerts={sellAlerts} btcTrend={btcTrend} mktSentiment={mktSentiment} buyThresh={cfg.alphaThresh} tiersData={tiersData}/></ErrorBoundary>
         :mainTab==="watchlist"
         ?<WatchlistTab watchlist={watchlist} coins={coins} onClose={closeWatchlistEntry} onRemove={removeWatchlistEntry} onOpen={id=>setSelectedCoin(id)} onClear={clearWatchlist} sellAlerts={sellAlerts} onDismissSell={dismissSellAlert}/>
         :mainTab==="paper"
-        ?<PaperTradingTab/>
-        :<>
+        ?<ErrorBoundary><PaperTradingTab/></ErrorBoundary>
+        :<ErrorBoundary>
       {/* Open Positions Panel */}
       <OpenPositionsPanel watchlist={watchlist} coins={coins} tiersData={tiersData}/>
       {/* Early Warnings Panel */}
@@ -2546,7 +2603,7 @@ function App(){
       <div style={{padding:"16px 24px",fontSize:10,color:"#1c2535",borderTop:"1px solid #0a0f1a"}}>
         ⚠ Signals based on 7-day sparkline data · Not financial advice · Prices via backend API · Refreshes every 3m
       </div>
-      </>}
+      </ErrorBoundary>}
       {showSettings&&<SettingsPanel cfg={cfg} setCfg={c=>{setCfg(c);setShowSettings(false);}} onClose={()=>setShowSettings(false)}/>}
     </div>
   );
