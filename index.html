@@ -1462,7 +1462,7 @@ function OpenPositionsPanel({watchlist,coins,tiersData}){
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
     const load=()=>{
-      fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
+      fetch(`${BACKEND_URL}/api/paper-trades`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(d=>{
           const all=d.trades||[];
@@ -1545,7 +1545,7 @@ function EarlyWarningsPanel(){
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
     const load=()=>{
-      fetch(`${BACKEND_URL}/api/early-warnings`,{headers})
+      fetch(`${BACKEND_URL}/api/early-warnings`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(d=>{setWarnings(Array.isArray(d)?d:(d.warnings||[]));setLoading(false);})
         .catch(()=>setLoading(false));
@@ -1621,11 +1621,11 @@ function PaperTradingTab(){
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
     const load=()=>{
-      fetch(`${BACKEND_URL}/api/paper-trades`,{headers})
+      fetch(`${BACKEND_URL}/api/paper-trades`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(d=>{setData(d);setLoading(false);})
         .catch(e=>{setError(e.message);setLoading(false);});
-      fetch(`${BACKEND_URL}/api/elite-paper-trades`,{headers})
+      fetch(`${BACKEND_URL}/api/elite-paper-trades`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(d=>{setEliteData(d);setEliteLoading(false);})
         .catch(()=>setEliteLoading(false));
@@ -1897,13 +1897,13 @@ function App(){
     const headers={'Content-Type':'application/json'};
     if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
     const load=()=>{
-      fetch(`${BACKEND_URL}/api/tiers`,{headers})
+      fetch(`${BACKEND_URL}/api/tiers`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(d=>setTiersData({elite:d.elite||[],standard:d.standard||[],probation:d.probation||[]}))
         .catch(()=>{});
     };
     load();
-    const t=setInterval(load,10*60*1000);
+    const t=setInterval(load,3*60*1000);
     return()=>clearInterval(t);
   },[]);
 
@@ -1949,7 +1949,7 @@ function App(){
         try{
           const headers={'Content-Type':'application/json'};
           if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
-          const r=await fetch(`${BACKEND_URL}/api/extracoins`,{headers});
+          const r=await fetch(`${BACKEND_URL}/api/extracoins`,{headers,cache:'no-store'});
           if(r.ok){
             const data=await r.json();
             const extras=data.coins||[];
@@ -1988,7 +1988,7 @@ function App(){
       const headers={'Content-Type':'application/json'};
       if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
       // Refresh tracked coins
-      fetch(`${BACKEND_URL}/api/tracked`,{headers})
+      fetch(`${BACKEND_URL}/api/tracked`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(data=>{
           if(Array.isArray(data)&&data.length){
@@ -2000,14 +2000,14 @@ function App(){
           }
         }).catch(()=>{});
       // Refresh BTC trend + market sentiment
-      fetch(`${BACKEND_URL}/api/status`,{headers})
+      fetch(`${BACKEND_URL}/api/status`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(data=>{
           if(data.btcTrend && data.btcTrend!=='UNKNOWN') setBtcTrend(data.btcTrend);
           if(data.marketSentiment) setMktSentiment(data.marketSentiment);
         }).catch(()=>{});
       // Refresh trigger logs
-      fetch(`${BACKEND_URL}/api/alltriggers`,{headers})
+      fetch(`${BACKEND_URL}/api/alltriggers`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(data=>{
           if(data&&typeof data==='object'&&Object.keys(data).length){
@@ -2015,7 +2015,7 @@ function App(){
           }
         }).catch(()=>{});
       // Refresh per-coin performance stats (cycle counts matching daily report)
-      fetch(`${BACKEND_URL}/api/performance`,{headers})
+      fetch(`${BACKEND_URL}/api/performance`,{headers,cache:'no-store'})
         .then(r=>r.json())
         .then(data=>{
           if(data&&data.coins){
@@ -2025,6 +2025,7 @@ function App(){
           }
         }).catch(()=>{});
     };
+    refreshFromBackend();
     const t=setInterval(refreshFromBackend, 3*60*1000); // every 3 minutes
     return()=>clearInterval(t);
   },[]);
