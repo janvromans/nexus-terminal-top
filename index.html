@@ -2026,7 +2026,7 @@ function App(){
   const [selectedCoin,setSelectedCoin] = useState(null);
   const [histories,setHistories]     = useState({});
   const [search,setSearch]           = useState("");
-  const [sortCol,setSortCol]         = useState("rank");
+  const [sortCol,setSortCol]         = useState("sigalpha");
   const [sortDir,setSortDir]         = useState("asc");
   const [filterSig,setFilterSig]     = useState("ALL");
   const [newsData,setNewsData]       = useState({});
@@ -2510,6 +2510,17 @@ function App(){
     if(search)list=list.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.symbol.toLowerCase().includes(search.toLowerCase()));
     if(filterSig!=="ALL")list=list.filter(c=>signals[c.id]?.overall===filterSig);
     list.sort((a,b)=>{
+      if(sortCol==="sigalpha"){
+        const sigOrder={BUY:0,NEUTRAL:1,SELL:2};
+        const aSig=signals[a.id]?.overall||"NEUTRAL";
+        const bSig=signals[b.id]?.overall||"NEUTRAL";
+        const ao=sigOrder[aSig]??1, bo=sigOrder[bSig]??1;
+        if(ao!==bo) return ao-bo;
+        const aScore=a.alpha??signals[a.id]?.score??50;
+        const bScore=b.alpha??signals[b.id]?.score??50;
+        if(aSig==="SELL") return aScore-bScore; // ascending within SELL
+        return bScore-aScore; // descending within BUY and NEUTRAL
+      }
       let av,bv;
       if(sortCol==="rank"){av=a.rank;bv=b.rank;}
       else if(sortCol==="price"){av=a.price||0;bv=b.price||0;}
