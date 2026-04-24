@@ -1424,11 +1424,7 @@ function SystemChecklist({coins,signals}){
     let btcDom=null,fg=null,sp=null;
     try{ const d=await fetch('https://api.coingecko.com/api/v3/global').then(r=>r.json()); btcDom=d?.data?.market_cap_percentage?.btc??null; }catch(e){}
     try{ const d=await fetch('https://api.alternative.me/fng/?limit=1').then(r=>r.json()); fg=d.data?.[0]?parseInt(d.data[0].value):null; }catch(e){}
-    try{
-      const d=await fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d').then(r=>r.json());
-      const cls=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
-      sp=cls.filter(Boolean).slice(-1)[0]??null;
-    }catch(e){}
+    try{ const v=await fetchSP500(); sp=v?.value??null; }catch(e){}
     results.push({sec:'MACRO',label:'BTC dominance >0',pass:btcDom!==null&&btcDom>0,detail:btcDom?`${btcDom.toFixed(1)}%`:'null'});
     results.push({sec:'MACRO',label:'Fear/Greed >0',pass:fg!==null&&fg>0,detail:fg!=null?String(fg):'null'});
     results.push({sec:'MACRO',label:'S&P 500 loaded',pass:sp!==null,detail:sp?sp.toFixed(0):'null'});
@@ -1491,6 +1487,23 @@ function SystemChecklist({coins,signals}){
   );
 }
 
+// ── S&P 500 fetch helper (query1 chart → corsproxy fallback) ──────────────────
+async function fetchSP500(){
+  try{
+    const d=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=2d').then(r=>r.json());
+    const cls=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
+    const valid=cls.filter(Boolean);
+    const last=valid.slice(-1)[0],prev=valid.slice(-2,-1)[0];
+    if(last&&prev) return {value:last,change:((last-prev)/prev)*100};
+  }catch(e){}
+  try{
+    const d=await fetch('https://corsproxy.io/?https://query1.finance.yahoo.com/v1/finance/quote?symbols=%5EGSPC').then(r=>r.json());
+    const q=d?.quoteResponse?.result?.[0];
+    if(q?.regularMarketPrice) return {value:q.regularMarketPrice,change:q.regularMarketChangePercent??0};
+  }catch(e){}
+  return null;
+}
+
 // ── Macro Strip ───────────────────────────────────────────────────────────────
 function MacroStrip(){
   const [btcDom,setBtcDom]=useState(null);
@@ -1501,13 +1514,7 @@ function MacroStrip(){
       .then(d=>{const pct=d?.data?.market_cap_percentage?.btc;if(pct!=null)setBtcDom(pct);}).catch(()=>{});
     fetch('https://api.alternative.me/fng/?limit=1').then(r=>r.json())
       .then(d=>setFg(d.data?.[0])).catch(()=>{});
-    fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d')
-      .then(r=>r.json()).then(d=>{
-        const closes=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
-        const last=closes.filter(Boolean).slice(-1)[0];
-        const prev=closes.filter(Boolean).slice(-2,-1)[0];
-        if(last&&prev) setSp({value:last,change:((last-prev)/prev)*100});
-      }).catch(()=>{});
+    fetchSP500().then(v=>{ if(v) setSp(v); }).catch(()=>{});
   },[]);
   const fgVal=fg?parseInt(fg.value):null;
   const fgColor=fgVal===null?'#4a5a7a':fgVal>=75?'#00e5a0':fgVal>=55?'#ffd166':fgVal>=45?'#8896b3':fgVal>=25?'#ff8c42':'#ff3d71';
