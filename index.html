@@ -1459,7 +1459,7 @@ function TileGrid({coins,signals,watchlist,addToWatchlist,onSelect,sellAlerts}){
 }
 
 // ── Open Positions Panel ──────────────────────────────────────────────────────
-function OpenPositionsPanel({coins,tiersData}){
+function OpenPositionsPanel({coins,tiersData,onCount}){
   const [apiOpen,setApiOpen]=useState([]);
   useEffect(()=>{
     if(!BACKEND_URL) return;
@@ -1470,7 +1470,9 @@ function OpenPositionsPanel({coins,tiersData}){
         .then(r=>r.json())
         .then(d=>{
           const all=d.trades||[];
-          setApiOpen(all.filter(t=>t.status==='open'));
+          const open=all.filter(t=>t.status==='open');
+          setApiOpen(open);
+          if(onCount) onCount(open.length);
         }).catch(()=>{});
     };
     load();
@@ -1906,6 +1908,8 @@ function App(){
   const [btcTrend,setBtcTrend]       = useState('...');
   const [mktSentiment,setMktSentiment] = useState(null);
   const [tiersData,setTiersData]     = useState({elite:[],standard:[],probation:[]});
+  const [openPositionsCount,setOpenPositionsCount] = useState(0);
+  const [selfTestDismissed,setSelfTestDismissed] = useState(false);
 
   // Fetch tier data every 10 minutes
   useEffect(()=>{
@@ -2382,6 +2386,13 @@ function App(){
   const allPricesZero=!loading&&coins.length>0&&coins.every(c=>c.change===0);
   const tooFewCoins=!loading&&coins.length>0&&coins.length<100;
   const showHealthWarning=tooFewCoins||allPricesZero;
+  const STABLE_SYMBOLS=new Set(['USDT','USDC','BUSD','DAI','TUSD','USDP','GUSD','FRAX','USDD','EURC','PYUSD']);
+  const stablecoinDetected=!loading&&coins.some(c=>STABLE_SYMBOLS.has(c.symbol));
+  const selfTestIssues=[];
+  if(!loading&&coins.length>0&&coins.length<300) selfTestIssues.push(`Only ${coins.length} coins loaded (expect ≥300)`);
+  if(openPositionsCount>30) selfTestIssues.push(`${openPositionsCount} open positions (expect ≤30)`);
+  if(stablecoinDetected) selfTestIssues.push('Stablecoin detected in coin list');
+  const showSelfTest=!selfTestDismissed&&selfTestIssues.length>0;
   const selectedCoinObj=selectedCoin?coins.find(c=>c.id===selectedCoin):null;
 
   if(selectedCoinObj){
@@ -2447,6 +2458,13 @@ function App(){
         <span style={{color:"#3a4a6a"}}>·</span>
         <span>{tooFewCoins?`Only ${coins.length} coins loaded (expected ≥100) — backend may be initializing.`:""}{tooFewCoins&&allPricesZero?" · ":""}{allPricesZero?"All price changes showing 0.00% — price feed may be unavailable.":""}</span>
       </div>}
+      {/* SELF-TEST BANNER */}
+      {showSelfTest&&<div style={{background:"rgba(255,61,113,0.07)",borderBottom:"1px solid rgba(255,61,113,0.2)",padding:"7px 24px",display:"flex",alignItems:"center",gap:8,fontSize:10,color:"#ff6b8a"}}>
+        <span style={{fontWeight:700}}>⚠ SELF-TEST</span>
+        <span style={{color:"#3a4a6a"}}>·</span>
+        <span style={{flex:1}}>{selfTestIssues.join(' · ')}</span>
+        <button onClick={()=>setSelfTestDismissed(true)} style={{background:"none",border:"1px solid #ff3d7144",borderRadius:3,padding:"1px 8px",color:"#ff6b8a",fontSize:9,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>✕ DISMISS</button>
+      </div>}
 
       {/* MACRO STRIP */}
       <MacroStrip/>
@@ -2466,7 +2484,7 @@ function App(){
         ?<ErrorBoundary><PaperTradingTab/></ErrorBoundary>
         :<ErrorBoundary>
       {/* Open Positions Panel */}
-      <OpenPositionsPanel coins={coins} tiersData={tiersData}/>
+      <OpenPositionsPanel coins={coins} tiersData={tiersData} onCount={setOpenPositionsCount}/>
       {/* Early Warnings Panel */}
       <EarlyWarningsPanel/>
       {/* Search / filter / view toggle bar */}
