@@ -1495,9 +1495,9 @@ function OpenPositionsPanel({coins,tiersData}){
       <div style={{fontSize:8,letterSpacing:'0.2em',color:'#4a5a7a',marginBottom:8}}>▶ OPEN POSITIONS ({allOpen.length})</div>
       <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:2}}>
         {allOpen.map(pos=>{
-          const live=coins.find(c=>c.id===pos.coinId);
-          const cur=live?.price;
-          const pnlPct=(cur&&pos.entryPrice&&pos.entryPrice>0)?((cur-pos.entryPrice)/pos.entryPrice)*100:null;
+          const live=coins.find(c=>c.id===pos.coinId)||coins.find(c=>c.symbol===pos.symbol);
+          const cur=live?.price??null;
+          const pnlPct=(cur!=null&&cur>0&&pos.entryPrice&&pos.entryPrice>0)?((cur-pos.entryPrice)/pos.entryPrice)*100:null;
           const pnlEur=pnlPct!==null?(pos.sizeEur*pnlPct/100):null;
           const slPct=-5;
           return (
@@ -1516,7 +1516,7 @@ function OpenPositionsPanel({coins,tiersData}){
               </div>
               <div style={{fontSize:8,color:'#4a5a7a',display:'grid',gridTemplateColumns:'1fr 1fr',rowGap:2,columnGap:6}}>
                 <span>Entry: <span style={{color:'#8896b3'}}>{fmtP(pos.entryPrice)}</span></span>
-                <span>Now: <span style={{color: cur?'#e2e8f0':'#3a4a6a'}}>{cur?fmtP(cur):'loading...'}</span></span>
+                <span>Now: <span style={{color:cur!=null?'#e2e8f0':'#3a4a6a'}}>{cur!=null?fmtP(cur):coins.length?'—':'…'}</span></span>
                 <span>Held: <span style={{color:'#8896b3'}}>{held(pos.entryTime)}</span></span>
                 <span>Size: <span style={{color:'#8896b3'}}>€{pos.sizeEur}</span></span>
               </div>
