@@ -68,6 +68,10 @@ const BLACKLIST = new Set([
 const BACKEND_URL    = 'https://nexus-backend-production-1985.up.railway.app';
 const BACKEND_API_KEY = 'nexus-2024';
 
+// ── Telegram alerting — fill in to enable >3 failure alerts ──────────────────
+const TELEGRAM_BOT_TOKEN = ''; // e.g. '123456:ABC-DEF...'
+const TELEGRAM_CHAT_ID   = ''; // e.g. '-1001234567890'
+
 // ── EUR/USD conversion rate (fetched on each market refresh) ─────────────────
 let EUR_RATE = 0.92;
 
@@ -1352,6 +1356,141 @@ function WatchlistTab({watchlist,coins,onClose,onRemove,onOpen,onClear,sellAlert
     </div>
   );
 }
+// ── System Checklist ──────────────────────────────────────────────────────────
+function SystemChecklist({coins,signals}){
+  const coinsRef    = useRef(coins);
+  const signalsRef  = useRef(signals);
+  const lastAlertTs = useRef(0);
+  const ranFirst    = useRef(false);
+  useEffect(()=>{ coinsRef.current=coins; },[coins]);
+  useEffect(()=>{ signalsRef.current=signals; },[signals]);
+
+  const [checks,setChecks]     = useState([]);
+  const [expanded,setExpanded] = useState(false);
+  const [running,setRunning]   = useState(false);
+  const [lastRun,setLastRun]   = useState(null);
+
+  const runChecks = useCallback(async()=>{
+    setRunning(true);
+    const c=coinsRef.current;
+    const s=signalsRef.current;
+    const results=[];
+
+    // ── SCANNER ──────────────────────────────────────────────────────────────
+    results.push({sec:'SCANNER',label:'Coins loaded ≥350',pass:c.length>=350,detail:`${c.length}`});
+    const s10=c.slice(0,10);
+    results.push({sec:'SCANNER',label:'Prices non-zero (first 10)',pass:s10.length>0&&s10.every(x=>x.price>0),detail:`${s10.filter(x=>x.price>0).length}/10`});
+    const nonZero=s10.filter(x=>x.change!==0&&x.change!=null).length;
+    results.push({sec:'SCANNER',label:'24h changes non-zero (≥5/10)',pass:nonZero>=5,detail:`${nonZero}/10`});
+    results.push({sec:'SCANNER',label:'BUY/SELL signals exist',pass:Object.values(s).some(x=>x.overall!=='NEUTRAL')});
+
+    // ── OPEN POSITIONS + PAPER DATA (single fetch) ───────────────────────────
+    let openPos=[],allTrades=[],paperSummary={},eliteData=null,posError=false;
+    if(BACKEND_URL){
+      try{
+        const h={'Content-Type':'application/json'};
+        if(BACKEND_API_KEY) h['X-API-Key']=BACKEND_API_KEY;
+        const d=await fetch(`${BACKEND_URL}/api/paper-trades`,{headers:h,cache:'no-store'}).then(r=>r.json());
+        allTrades=d.trades||[];
+        paperSummary=d.summary||{};
+        openPos=allTrades.filter(t=>t.status==='open');
+      }catch(e){ posError=true; }
+      try{
+        const h={'Content-Type':'application/json'};
+        if(BACKEND_API_KEY) h['X-API-Key']=BACKEND_API_KEY;
+        eliteData=await fetch(`${BACKEND_URL}/api/elite-paper-trades`,{headers:h,cache:'no-store'}).then(r=>r.json());
+      }catch(e){}
+    }
+
+    // ── OPEN POSITIONS checks ─────────────────────────────────────────────────
+    results.push({sec:'POSITIONS',label:'Count ≤20',pass:!posError&&openPos.length<=20,detail:`${openPos.length}`});
+    const STABLE_RE=/USD|EUR|USDT|USDC|STABLE/i;
+    results.push({sec:'POSITIONS',label:'No stablecoins',pass:!posError&&!openPos.some(p=>STABLE_RE.test(p.symbol))});
+    const now=Date.now();
+    const stale=openPos.filter(p=>p.entry_time&&(now-new Date(p.entry_time))>7*24*60*60*1000);
+    results.push({sec:'POSITIONS',label:'None held >7 days',pass:!posError&&stale.length===0,detail:stale.length?`${stale.length} stale`:''});
+    results.push({sec:'POSITIONS',label:'Prices loaded',pass:openPos.length===0||c.length>0});
+
+    // ── PAPER TRADING checks ──────────────────────────────────────────────────
+    const portVal=paperSummary.portfolio_value;
+    const tradeCount=paperSummary.total_trades||allTrades.length;
+    results.push({sec:'PAPER',label:'Portfolio started or fresh',pass:!posError&&(portVal!==1000||tradeCount===0),detail:portVal!=null?`€${parseFloat(portVal).toFixed(0)}`:'—'});
+    const todayStr=new Date().toDateString();
+    const todayPnl=allTrades.filter(t=>t.exit_time&&new Date(t.exit_time).toDateString()===todayStr).reduce((a,t)=>a+parseFloat(t.pnl_eur||0),0);
+    results.push({sec:'PAPER',label:'Today P&L is a number',pass:!posError&&typeof todayPnl==='number',detail:!posError?`€${todayPnl.toFixed(2)}`:'—'});
+    results.push({sec:'PAPER',label:'Elite section loaded',pass:eliteData!==null&&!eliteData?.error});
+
+    // ── MACRO checks ─────────────────────────────────────────────────────────
+    let btcDom=null,fg=null,sp=null;
+    try{ const d=await fetch('https://api.coingecko.com/api/v3/global').then(r=>r.json()); btcDom=d?.data?.market_cap_percentage?.btc??null; }catch(e){}
+    try{ const d=await fetch('https://api.alternative.me/fng/?limit=1').then(r=>r.json()); fg=d.data?.[0]?parseInt(d.data[0].value):null; }catch(e){}
+    try{
+      const d=await fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d').then(r=>r.json());
+      const cls=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
+      sp=cls.filter(Boolean).slice(-1)[0]??null;
+    }catch(e){}
+    results.push({sec:'MACRO',label:'BTC dominance >0',pass:btcDom!==null&&btcDom>0,detail:btcDom?`${btcDom.toFixed(1)}%`:'null'});
+    results.push({sec:'MACRO',label:'Fear/Greed >0',pass:fg!==null&&fg>0,detail:fg!=null?String(fg):'null'});
+    results.push({sec:'MACRO',label:'S&P 500 loaded',pass:sp!==null,detail:sp?sp.toFixed(0):'null'});
+
+    setChecks(results);
+    setLastRun(new Date());
+    setRunning(false);
+
+    // Telegram alert if >3 failures (throttled to once per 30 min)
+    const failures=results.filter(r=>!r.pass);
+    if(failures.length>3&&TELEGRAM_BOT_TOKEN&&TELEGRAM_CHAT_ID&&Date.now()-lastAlertTs.current>30*60*1000){
+      lastAlertTs.current=Date.now();
+      const msg=`⚠️ NEXUS TERMINAL: ${failures.length} checks failing\n`+failures.map(f=>`❌ [${f.sec}] ${f.label}`).join('\n');
+      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({chat_id:TELEGRAM_CHAT_ID,text:msg})
+      }).catch(()=>{});
+    }
+  },[]);
+
+  // 5-minute interval
+  useEffect(()=>{ const t=setInterval(runChecks,5*60*1000); return()=>clearInterval(t); },[runChecks]);
+
+  // First run once coins are available
+  useEffect(()=>{
+    if(!ranFirst.current&&coins.length>0){ ranFirst.current=true; runChecks(); }
+  },[coins.length,runChecks]);
+
+  // Auto-expand on issues, collapse when healthy
+  useEffect(()=>{ if(checks.length>0) setExpanded(checks.some(c=>!c.pass)); },[checks]);
+
+  const failCount=checks.filter(c=>!c.pass).length;
+  const allPass=checks.length>0&&failCount===0;
+
+  if(checks.length===0&&!running) return null;
+
+  return (
+    <div style={{background:allPass?'rgba(0,229,160,0.04)':'rgba(255,61,113,0.05)',borderBottom:`1px solid ${allPass?'rgba(0,229,160,0.12)':'rgba(255,61,113,0.18)'}`}}>
+      <div onClick={()=>setExpanded(e=>!e)} style={{padding:'5px 24px',display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none',minHeight:26}}>
+        {running&&<div style={{width:7,height:7,border:'1px solid rgba(14,122,254,0.4)',borderTop:'1px solid #0e7afe',borderRadius:'50%',flexShrink:0}} className="spin"/>}
+        {checks.length>0&&<span style={{fontSize:10,fontWeight:700,color:allPass?'#00e5a0':'#ff3d71'}}>
+          {allPass?'🟢 SYSTEM HEALTHY':`🔴 SYSTEM ISSUES (${failCount} check${failCount!==1?'s':''} failing)`}
+        </span>}
+        {lastRun&&<span style={{fontSize:8,color:'#2a3a5a',marginLeft:'auto',marginRight:8}}>{lastRun.toLocaleTimeString()}</span>}
+        {checks.length>0&&<span style={{fontSize:8,color:'#3a4a6a'}}>{expanded?'▲':'▼'}</span>}
+      </div>
+      {expanded&&checks.length>0&&(
+        <div style={{padding:'2px 24px 10px',display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:2}}>
+          {checks.map((ck,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:6,fontSize:9,padding:'2px 0'}}>
+              <span style={{color:ck.pass?'#00e5a0':'#ff3d71',fontSize:11,lineHeight:1,flexShrink:0}}>●</span>
+              <span style={{fontSize:7,color:'#3a4a6a',letterSpacing:'0.1em',minWidth:54,flexShrink:0}}>{ck.sec}</span>
+              <span style={{color:ck.pass?'#3a5a48':'#5a3a44',flex:1}}>{ck.label}</span>
+              {ck.detail&&<span style={{color:'#3a4a6a',fontSize:8,flexShrink:0}}>{ck.detail}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Macro Strip ───────────────────────────────────────────────────────────────
 function MacroStrip(){
   const [btcDom,setBtcDom]=useState(null);
@@ -2466,6 +2605,8 @@ function App(){
         <button onClick={()=>setSelfTestDismissed(true)} style={{background:"none",border:"1px solid #ff3d7144",borderRadius:3,padding:"1px 8px",color:"#ff6b8a",fontSize:9,fontFamily:"inherit",cursor:"pointer",flexShrink:0}}>✕ DISMISS</button>
       </div>}
 
+      {/* SYSTEM CHECKLIST */}
+      <SystemChecklist coins={coins} signals={signals}/>
       {/* MACRO STRIP */}
       <MacroStrip/>
 
