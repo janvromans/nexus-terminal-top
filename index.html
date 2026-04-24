@@ -1463,7 +1463,7 @@ function TileGrid({coins,signals,watchlist,addToWatchlist,onSelect,sellAlerts}){
 }
 
 // ── Open Positions Panel ──────────────────────────────────────────────────────
-function OpenPositionsPanel({watchlist,coins,tiersData}){
+function OpenPositionsPanel({coins,tiersData}){
   const [apiOpen,setApiOpen]=useState([]);
   useEffect(()=>{
     if(!BACKEND_URL) return;
@@ -1482,26 +1482,15 @@ function OpenPositionsPanel({watchlist,coins,tiersData}){
     return()=>clearInterval(t);
   },[]);
 
-  // Merge backend open trades + frontend watchlist open entries (dedup by coin)
   const fmtP=p=>{if(p==null||p===''||isNaN(p))return'—';const n=parseFloat(p);if(n<0.01)return`€${n.toFixed(6)}`;if(n<1)return`€${n.toFixed(4)}`;if(n<100)return`€${n.toFixed(2)}`;return`€${n.toLocaleString(undefined,{maximumFractionDigits:2})}`;};
   const fmtE=v=>{if(v==null||isNaN(v))return'—';const n=parseFloat(v);return`€${Math.abs(n).toFixed(2)}`;};
   const held=t=>{if(!t)return'—';const s=Math.floor((Date.now()-new Date(t))/1000);if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`;return`${Math.floor(s/86400)}d`;};
 
-  // Backend open trades take priority
-  const backendIds=new Set(apiOpen.map(t=>t.coin_id));
-  const wlOpen=watchlist.filter(w=>!w.closed&&!backendIds.has(w.id)&&!BLACKLIST.has(w.id));
-  const allOpen=[
-    ...apiOpen.map(t=>({
-      key:t.coin_id+t.entry_time,symbol:t.symbol,coinId:t.coin_id,
-      entryPrice:parseFloat(t.entry_price),entryTime:t.entry_time,
-      sizeEur:tierPositionSize(t.coin_id,tiersData)||parseFloat(t.position_size_eur||50),fromBackend:true,color:'#0e7afe',
-    })),
-    ...wlOpen.map(w=>({
-      key:w.id+w.entryTime,symbol:w.symbol,coinId:w.id,
-      entryPrice:w.entryPrice,entryTime:w.entryTime,
-      sizeEur:tierPositionSize(w.id,tiersData)||50,fromBackend:false,color:w.color,
-    })),
-  ];
+  const allOpen=apiOpen.slice(0,20).map(t=>({
+    key:t.coin_id+t.entry_time,symbol:t.symbol,coinId:t.coin_id,
+    entryPrice:parseFloat(t.entry_price),entryTime:t.entry_time,
+    sizeEur:tierPositionSize(t.coin_id,tiersData)||parseFloat(t.position_size_eur||50),color:'#0e7afe',
+  }));
 
   if(allOpen.length===0) return null;
 
@@ -1522,7 +1511,7 @@ function OpenPositionsPanel({watchlist,coins,tiersData}){
                   <div style={{width:5,height:5,borderRadius:'50%',background:pos.color}}/>
                   <span style={{fontWeight:700,fontSize:12,color:'#e2e8f0'}}>{pos.symbol}</span>
                   {tierBadge(pos.coinId,tiersData)&&<span style={{fontSize:11}}>{tierBadge(pos.coinId,tiersData)}</span>}
-                  {pos.fromBackend&&<span style={{fontSize:7,padding:'1px 4px',borderRadius:2,background:'rgba(14,122,254,0.12)',color:'#0e7afe',border:'1px solid #0e7afe33'}}>PAPER</span>}
+                  <span style={{fontSize:7,padding:'1px 4px',borderRadius:2,background:'rgba(14,122,254,0.12)',color:'#0e7afe',border:'1px solid #0e7afe33'}}>PAPER</span>
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:13,fontWeight:700,color:pnlPct===null?'#4a5a7a':pnlPct>=0?'#00e5a0':'#ff3d71'}}>{pnlPct!==null?`${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%`:'—'}</div>
@@ -2481,7 +2470,7 @@ function App(){
         ?<ErrorBoundary><PaperTradingTab/></ErrorBoundary>
         :<ErrorBoundary>
       {/* Open Positions Panel */}
-      <OpenPositionsPanel watchlist={watchlist} coins={coins} tiersData={tiersData}/>
+      <OpenPositionsPanel coins={coins} tiersData={tiersData}/>
       {/* Early Warnings Panel */}
       <EarlyWarningsPanel/>
       {/* Search / filter / view toggle bar */}
