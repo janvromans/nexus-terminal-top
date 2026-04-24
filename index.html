@@ -1358,15 +1358,11 @@ function MacroStrip(){
   const [fg,setFg]=useState(null);
   const [sp,setSp]=useState(null);
   useEffect(()=>{
-    if(BACKEND_URL){
-      const headers={'Content-Type':'application/json'};
-      if(BACKEND_API_KEY) headers['X-API-Key']=BACKEND_API_KEY;
-      fetch(`${BACKEND_URL}/api/status`,{headers,cache:'no-store'}).then(r=>r.json())
-        .then(d=>{if(d.btcDominance!=null)setBtcDom(d.btcDominance);}).catch(()=>{});
-    }
+    fetch('https://api.coingecko.com/api/v3/global').then(r=>r.json())
+      .then(d=>{const pct=d?.data?.market_cap_percentage?.btc;if(pct!=null)setBtcDom(pct);}).catch(()=>{});
     fetch('https://api.alternative.me/fng/?limit=1').then(r=>r.json())
       .then(d=>setFg(d.data?.[0])).catch(()=>{});
-    fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d')
+    fetch('https://query2.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1d&range=5d')
       .then(r=>r.json()).then(d=>{
         const closes=d?.chart?.result?.[0]?.indicators?.quote?.[0]?.close||[];
         const last=closes.filter(Boolean).slice(-1)[0];
