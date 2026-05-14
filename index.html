@@ -1734,6 +1734,77 @@ function EarlyWarningsPanel(){
   );
 }
 
+// ── Dormant Coins Panel ───────────────────────────────────────────────────────
+// Shows coins blocked by the dormant system (rolling 20-cycle WR < 45%).
+// Re-evaluated every 50 cycles — promoted back to probation if WR > 55%.
+function DormantCoinsPanel({tiersData,performanceData}){
+  const [expanded,setExpanded]=useState(false);
+  const dormant=(tiersData&&tiersData.dormant)||[];
+  if(!BACKEND_URL||dormant.length===0) return null;
+  const dateStr=d=>{if(!d)return'—';const dt=new Date(d);return dt.toLocaleDateString('nl-NL',{day:'2-digit',month:'short',year:'numeric'});};
+  return (
+    <div style={{background:'#060b14',borderBottom:'1px solid #0d1525'}}>
+      <div onClick={()=>setExpanded(e=>!e)} style={{padding:'7px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',userSelect:'none'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:8,letterSpacing:'0.2em',color:'#8896b3'}}>💤 DORMANT COINS</span>
+          <span style={{fontSize:7,padding:'1px 6px',borderRadius:3,background:'rgba(136,150,179,0.12)',color:'#8896b3',border:'1px solid #8896b333'}}>{dormant.length}</span>
+        </div>
+        <span style={{fontSize:9,color:'#3a4a6a'}}>{expanded?'▲':'▼'}</span>
+      </div>
+      {expanded&&(
+        <div style={{padding:'0 24px 12px'}}>
+          <div style={{fontSize:9,color:'#2a3a5a',marginBottom:8}}>
+            Rolling 20-cycle WR &lt; 45% — BUY signals blocked. Herbeoordeeld elke 50 cycles; WR &gt; 55% → terug naar probation.
+          </div>
+          <div style={{background:'#0a0f1a',borderRadius:8,border:'1px solid #1c2535',overflow:'hidden'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead>
+                <tr style={{borderBottom:'1px solid #1c2535',background:'#060b14'}}>
+                  {[['COIN','160px'],['WIN RATE','90px'],['CYCLES','75px'],['DORMANT SINDS','120px'],['HERBEOORDELING','140px']].map(([h,w])=>(
+                    <th key={h} style={{padding:'7px 12px',textAlign:'left',fontSize:8,letterSpacing:'0.15em',color:'#3a4a6a',fontWeight:600,width:w}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dormant.map((d,i)=>{
+                  const perf=performanceData&&performanceData[d.coinId]||null;
+                  const wr=perf&&perf.cycles>0?perf.wr:null; // wr is 0-100 from /api/performance
+                  const cycles=perf?perf.cycles:null;
+                  const reEvalAt=d.cyclesAtDormancy+50;
+                  const cyclesLeft=cycles!==null?Math.max(0,reEvalAt-cycles):null;
+                  const wrColor=wr===null?'#3a4a6a':wr>=55?'#ffd166':wr>=45?'#ff9500':'#ff3d71';
+                  return (
+                    <tr key={d.coinId} style={{borderBottom:i<dormant.length-1?'1px solid #0d1525':'none'}}>
+                      <td style={{padding:'8px 12px'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontWeight:700,color:'#8896b3'}}>{d.symbol||d.coinId.toUpperCase()}</span>
+                          <span style={{fontSize:8,padding:'1px 5px',borderRadius:3,background:'rgba(136,150,179,0.08)',color:'#4a5a7a',border:'1px solid #1c2535'}}>DORMANT</span>
+                        </div>
+                      </td>
+                      <td style={{padding:'8px 12px'}}>
+                        <span style={{fontWeight:700,color:wrColor}}>{wr!==null?`${wr}%`:'—'}</span>
+                      </td>
+                      <td style={{padding:'8px 12px',color:'#8896b3'}}>{cycles!==null?cycles:'—'}</td>
+                      <td style={{padding:'8px 12px',color:'#4a5a7a',fontSize:10}}>{dateStr(d.dormantSince)}</td>
+                      <td style={{padding:'8px 12px',fontSize:10}}>
+                        {cyclesLeft!==null?(
+                          cyclesLeft===0
+                            ?<span style={{color:'#ffd166',fontWeight:600}}>volgende refresh</span>
+                            :<span style={{color:'#4a5a7a'}}>{cyclesLeft} cycles ({reEvalAt} totaal)</span>
+                        ):<span style={{color:'#3a4a6a'}}>cycle {reEvalAt}</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Mini Line Chart (for Paper Trading) ──────────────────────────────────────
 function MiniLineChart({data,w=400,h=90}){
   if(!data||data.length<2) return <div style={{width:w,height:h,background:'#0a0f1a',borderRadius:6}}/>;
@@ -2055,7 +2126,7 @@ function App(){
   const [performanceData,setPerformanceData] = useState({});  // {coinId: {cycles,wins,losses,wr,avgPnl,totalPnl}} from /api/performance
   const [btcTrend,setBtcTrend]       = useState('...');
   const [mktSentiment,setMktSentiment] = useState(null);
-  const [tiersData,setTiersData]     = useState({elite:[],standard:[],probation:[]});
+  const [tiersData,setTiersData]     = useState({elite:[],standard:[],probation:[],dormant:[],suspended:[]});
   const [openPositionsCount,setOpenPositionsCount] = useState(0);
   const [selfTestDismissed,setSelfTestDismissed] = useState(false);
 
@@ -2067,7 +2138,7 @@ function App(){
     const load=()=>{
       fetch(`${BACKEND_URL}/api/tiers`,{headers,cache:'no-store'})
         .then(r=>r.json())
-        .then(d=>setTiersData({elite:d.elite||[],standard:d.standard||[],probation:d.probation||[]}))
+        .then(d=>setTiersData({elite:d.elite||[],standard:d.standard||[],probation:d.probation||[],dormant:d.dormant||[],suspended:d.suspended||[]}))
         .catch(()=>{});
     };
     load();
@@ -2648,6 +2719,8 @@ function App(){
       <OpenPositionsPanel coins={coins} tiersData={tiersData} onCount={setOpenPositionsCount}/>
       {/* Early Warnings Panel */}
       <EarlyWarningsPanel/>
+      {/* Dormant Coins Panel */}
+      <DormantCoinsPanel tiersData={tiersData} performanceData={performanceData}/>
       {/* Search / filter / view toggle bar */}
       <div style={{padding:"10px 24px",borderBottom:"1px solid #0d1525",display:"flex",alignItems:"center",gap:10,background:"#080e1a",flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search coin..."
